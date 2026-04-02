@@ -52,17 +52,11 @@ def launch_setup(context, *args, **kwargs):
         }.items(),
     )
 
-    gripper_spawner = Node(
-        package='controller_manager',
-        executable='spawner',
-        arguments=[gripper_controller, '--controller-manager', controller_manager],
-        output='screen',
-        respawn=False,
-    )
-
+  
+    
     return [
         robot_planner_node_launch,
-        gripper_spawner,
+        
     ]
 
 
