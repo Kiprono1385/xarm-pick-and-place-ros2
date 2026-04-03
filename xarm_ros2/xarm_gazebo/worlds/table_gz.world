@@ -2,27 +2,69 @@
 <sdf version="1.4">
   <world name="default">
     <include>
-      <uri>
-        https://fuel.gazebosim.org/1.0/OpenRobotics/models/Ground Plane
-      </uri>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Ground Plane</uri>
     </include>
     <include>
-      <uri>
-        https://fuel.gazebosim.org/1.0/OpenRobotics/models/Sun
-      </uri>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Sun</uri>
     </include>
+
     <include>
       <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Table</uri>
       <name>table</name>
       <pose>0.0 -0.84 0 0 0 0</pose>
     </include>
 
+    <model name="target_cube">
+      <pose>0.0 -0.84 1.04 0 0 0</pose>
+      <link name="link">
+        <inertial>
+          <mass>0.05</mass>
+          <inertia>
+            <ixx>0.000020833</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>0.000020833</iyy><iyz>0</iyz>
+            <izz>0.000020833</izz>
+          </inertia>
+        </inertial>
+        
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.05 0.05 0.05</size>
+            </box>
+          </geometry>
+          <surface>
+            <friction>
+              <ode>
+                <mu>1.5</mu> <mu2>1.5</mu2>
+              </ode>
+            </friction>
+            <contact>
+              <ode>
+                <kp>1000000.0</kp>
+                <kd>1.0</kd>
+              </ode>
+            </contact>
+          </surface>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.05 0.05 0.05</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>1 0 0 1</ambient> <diffuse>1 0 0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
     <physics type="ode">
       <max_step_size>0.001</max_step_size>
       <real_time_factor>1</real_time_factor>
       <real_time_update_rate>1000</real_time_update_rate>
-      <!-- (2022-12-20) humble: change gravity from [0 0 -9.81] to [0 0 0] -->
-      <gravity>0 0 0</gravity>
+      <gravity>0 0 -9.81</gravity>
     </physics>
 
   </world>

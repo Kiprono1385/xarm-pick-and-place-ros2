@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro" name="pick_cube">
+
+  <xacro:property name="size" value="0.05" /> 
+  <xacro:property name="mass" value="0.1" /> 
+
+  <link name="cube_link">
+    <visual>
+      <geometry>
+        <box size="${size} ${size} ${size}"/>
+      </geometry>
+      <material name="red"><color rgba="1 0 0 1"/></material>
+    </visual>
+
+    <collision>
+      <geometry>
+        <box size="${size} ${size} ${size}"/>
+      </geometry>
+    </collision>
+
+    <inertial>
+      <mass value="${mass}"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.000041667" ixy="0" ixz="0" 
+               iyy="0.000041667" iyz="0" 
+               izz="0.000041667"/>
+    </inertial>
+  </link>
+
+  <gazebo reference="cube_link">
+    <material>Gazebo/Red</material>
+    <mu1>1.5</mu1>
+    <mu2>1.5</mu2>
+    <kp>1000000.0</kp> <kd>1.0</kd>       </gazebo>
+</robot>
