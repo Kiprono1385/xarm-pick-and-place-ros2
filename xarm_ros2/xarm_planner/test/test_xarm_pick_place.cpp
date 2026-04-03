@@ -1,109 +1,118 @@
-/* Copyright 2021 UFACTORY Inc. All Rights Reserved.
- * Author: Vinman <vinman.cub@gmail.com>
- * Modified by Brian Kiprono
- * Changes: Fixed private member access error and scoped lambda variables
- */
-
-#include <signal.h>
 #include <rclcpp/rclcpp.hpp>
 #include "xarm_planner/xarm_planner.h"
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
 #include <moveit_msgs/msg/collision_object.hpp>
+#include <moveit_msgs/msg/attached_collision_object.hpp>
+#include <moveit_msgs/msg/planning_scene.hpp>
 
 int main(int argc, char **argv)
 {
     rclcpp::init(argc, argv);
     rclcpp::NodeOptions node_options;
     node_options.automatically_declare_parameters_from_overrides(true);
-    auto node = rclcpp::Node::make_shared("test_xarm_pick_place", node_options);
-    
-    signal(SIGINT, SIG_DFL);
+    auto node = rclcpp::Node::make_shared("mtc_final_picker", node_options);
 
-    // Determine MoveIt group names
-    int dof;
-    node->get_parameter_or("dof", dof, 7);
-    std::string robot_type;
-    node->get_parameter_or("robot_type", robot_type, std::string("xarm"));
-    std::string prefix;
-    node->get_parameter_or("prefix", prefix, std::string(""));
+    xarm_planner::XArmPlanner arm_planner(node, "xarm7"); 
+    xarm_planner::XArmPlanner gripper_planner(node, "xarm_gripper");
+    moveit::planning_interface::PlanningSceneInterface psi;
 
-    std::string arm_group = prefix + robot_type + std::to_string(dof);
-    std::string gripper_group = prefix + robot_type + "_gripper";
-
-    // Initialize Planners
-    xarm_planner::XArmPlanner arm_planner(node, arm_group);
-    xarm_planner::XArmPlanner gripper_planner(node, gripper_group);
-
-    // --- 1. SPAWN CUBE (Fixed Lambda Style) ---
-    moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
-
-    // We manually set the frame_id to "world" or "link_base" to avoid the private member error
-    auto const collision_object = [] {
-        moveit_msgs::msg::CollisionObject collision_object;
-        // Check your RViz 'Fixed Frame'. If it's link_base, use that here.
-        collision_object.header.frame_id = "link_base"; // or "world"
-        collision_object.id = "target_cube";
-
+    // 1. Setup the "Target Cube" (Red)
+    auto const target_cube = [] {
+        moveit_msgs::msg::CollisionObject obj;
+        obj.header.frame_id = "world";
+        obj.id = "target_cube";
         shape_msgs::msg::SolidPrimitive primitive;
-        primitive.type = primitive.BOX;
-        primitive.dimensions.resize(3);
-        primitive.dimensions[primitive.BOX_X] = 0.05; // 5cm
-        primitive.dimensions[primitive.BOX_Y] = 0.05;
-        primitive.dimensions[primitive.BOX_Z] = 0.05;
-
-        geometry_msgs::msg::Pose box_pose;
-        box_pose.orientation.w = 1.0;
-        box_pose.position.x = -0.34; // Table center
-        box_pose.position.y = -0.20; // Table center
-        box_pose.position.z = 0.025; // 2.5cm up to sit on table
-
-        collision_object.primitives.push_back(primitive);
-        collision_object.primitive_poses.push_back(box_pose);
-        collision_object.operation = collision_object.ADD;
-
-        return collision_object;
+        primitive.type = shape_msgs::msg::SolidPrimitive::BOX;
+        primitive.dimensions = {0.05, 0.05, 0.05};
+        geometry_msgs::msg::Pose pose;
+        pose.orientation.x = 1.0; pose.orientation.w = 0.0; 
+        pose.position.x = -0.34; pose.position.y = -0.20; pose.position.z = 0.025; 
+        obj.primitives.push_back(primitive);
+        obj.primitive_poses.push_back(pose);
+        obj.operation = moveit_msgs::msg::CollisionObject::ADD;
+        return obj;
     }();
 
-    RCLCPP_INFO(node->get_logger(), "Applying collision object...");
-    planning_scene_interface.applyCollisionObject(collision_object);
+    auto const table_surface = [] {
+        moveit_msgs::msg::CollisionObject obj;
+        obj.header.frame_id = "world";
+        obj.id = "table_surface";
+        shape_msgs::msg::SolidPrimitive primitive;
+        primitive.type = shape_msgs::msg::SolidPrimitive::BOX;
+        
+        // Standard dimensions (Length, Width, Thickness)
+        primitive.dimensions = {1.5, 0.8, 0.01}; 
+        
+        geometry_msgs::msg::Pose pose;
+        
+        // --- APPLY 90 DEGREE ROTATION ON Y-AXIS ---
+        // Formula: w = cos(45°), y = sin(45°)
+        pose.orientation.x = 0.0;
+        pose.orientation.y = 0.0;
+        pose.orientation.z = 0.7071; // sin(45°)
+        pose.orientation.w = 0.7071;
 
-    // --- 2. JOINT TARGETS ---
-    std::vector<double> gripper_open(6, 0.0);
-    std::vector<double> gripper_close(6, 0.855);
+        // Position coordinates from your provided snippet
+        pose.position.x = -0.34; 
+        pose.position.y = -0.20; 
+        pose.position.z = -0.005; 
 
-    // Radians for 7 joints
-    std::vector<double> approach_pick_joint  = {3.1067, 0.2269, 0.0000, 1.3090, 0.0000, 1.0297, 3.1067};
-    std::vector<double> pick_pose_joint      = {3.1067, 0.4014, 0.0000, 1.1868, 0.0000, 0.7505, 3.1067};
-    std::vector<double> lift_pose_joint      = {3.1067, 0.2269, 0.0000, 1.3090, 0.0000, 1.0297, 3.1067};  
-    std::vector<double> approach_place_joint = {0.5411, -0.9076, -2.0944, 2.2515, -0.7679, 1.6581, -1.8675};
-    std::vector<double> place_pose_joint     = {0.4014, -1.0647, -2.1817, 1.8675, -0.8901, 1.2217, -1.7279};
-    std::vector<double> retreat_pose_joint   = {0.5411, -0.9076, -2.0944, 2.2515, -0.7679, 1.6581, -1.8675};
+        obj.primitives.push_back(primitive);
+        obj.primitive_poses.push_back(pose);
+        obj.operation = moveit_msgs::msg::CollisionObject::ADD;
+        return obj;
+    }();
 
-    auto go_joint = [&](const std::vector<double> &target) {
-        if (!arm_planner.planJointTarget(target)) return false;
-        return arm_planner.executePath();
-    };
+    psi.applyCollisionObject(target_cube);
+    psi.applyCollisionObject(table_surface);
 
-    auto set_gripper = [&](const std::vector<double> &target) {
-        if (!gripper_planner.planJointTarget(target)) return false;
-        return gripper_planner.executePath();
-    };
-
-    // --- 3. EXECUTION ---
-    if (!set_gripper(gripper_open)) return 1;
-    if (!go_joint(approach_pick_joint)) return 1;
-    if (!go_joint(pick_pose_joint)) return 1;
+    // 3. Apply Colors via PlanningScene Diff
+    moveit_msgs::msg::PlanningScene planning_scene;
+    planning_scene.is_diff = true;
+    moveit_msgs::msg::ObjectColor cube_color;
+    cube_color.id = "target_cube";
+    cube_color.color.r = 1.0; cube_color.color.a = 1.0;
+    moveit_msgs::msg::ObjectColor table_color;
+    table_color.id = "table_surface";
+    table_color.color.r = 0.58; table_color.color.g = 0.29; table_color.color.b = 0.0; table_color.color.a = 0.8;
     
-    RCLCPP_INFO(node->get_logger(), "Closing gripper...");
-    if (!set_gripper(gripper_close)) return 1;
+    planning_scene.object_colors.push_back(cube_color);
+    planning_scene.object_colors.push_back(table_color);
+    psi.applyPlanningScene(planning_scene);
 
-    if (!go_joint(lift_pose_joint)) return 1;
-    if (!go_joint(approach_place_joint)) return 1;
-    if (!go_joint(place_pose_joint)) return 1;
-    
-    if (!set_gripper(gripper_open)) return 1;
-    if (!go_joint(retreat_pose_joint)) return 1;
+    // 4. STAGE: Approach
+    geometry_msgs::msg::Pose target_pose;
+    target_pose.orientation.x = 1.0; target_pose.orientation.w = 0.0; 
+    target_pose.position.x = -0.34; target_pose.position.y = -0.20; target_pose.position.z = 0.15;
 
-    RCLCPP_INFO(node->get_logger(), "Done.");
+    RCLCPP_INFO(node->get_logger(), "Executing STAGE: Approach");
+    if (arm_planner.planPoseTarget(target_pose)) arm_planner.executePath();
+
+    // 5. STAGE: Pre-Attach (Collision Bypass)
+    moveit_msgs::msg::AttachedCollisionObject allow_touch;
+    allow_touch.link_name = "link_tcp"; 
+    allow_touch.object = target_cube;
+    allow_touch.object.operation = moveit_msgs::msg::CollisionObject::ADD;
+    psi.applyAttachedCollisionObject(allow_touch);
+
+    // 6. STAGE: Lower to Grasp Height
+    target_pose.position.z = 0.035; 
+    if (arm_planner.planPoseTarget(target_pose)) arm_planner.executePath();
+
+    // 7. STAGE: Grasp
+    std::vector<double> gripper_close = {0.85}; 
+    if (gripper_planner.planJointTarget(gripper_close)) {
+        gripper_planner.executePath();
+        rclcpp::sleep_for(std::chrono::milliseconds(2000)); 
+    }
+
+    // 8. STAGE: Lift
+    target_pose.position.z = 0.25; 
+    if (arm_planner.planPoseTarget(target_pose)) {
+        arm_planner.executePath();
+        RCLCPP_INFO(node->get_logger(), "MTC-style Pick Sequence Complete!");
+    }
+
+    rclcpp::shutdown();
     return 0;
 }
