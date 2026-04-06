@@ -66,28 +66,53 @@
       <selfCollide>false</selfCollide>
     </gazebo>
 
-    <gazebo reference="${prefix}left_outer_knuckle">
-      <selfCollide>false</selfCollide>
-    </gazebo>
-
     <gazebo reference="${prefix}left_finger">
       <selfCollide>false</selfCollide>
-    </gazebo>
-
-    <gazebo reference="${prefix}left_inner_knuckle">
-      <selfCollide>false</selfCollide>
-    </gazebo>
-
-    <gazebo reference="${prefix}right_outer_knuckle">
-      <selfCollide>false</selfCollide>
+      <mu1>20.0</mu1>
+      <mu2>20.0</mu2>
+      <kp>100000.0</kp> 
+      <kd>1000.0</kd>
+      <minDepth>0.005</minDepth>
+      <maxVel>0.0</maxVel>
+      <slip1>0.0</slip1>
+      <slip2>0.0</slip2>
     </gazebo>
 
     <gazebo reference="${prefix}right_finger">
       <selfCollide>false</selfCollide>
+      <mu1>20.0</mu1>
+      <mu2>20.0</mu2>
+      <kp>100000.0</kp>
+      <kd>1000.0</kd>
+      <minDepth>0.005</minDepth>
+      <maxVel>0.0</maxVel>
+      <slip1>0.0</slip1>
+      <slip2>0.0</slip2>
+    </gazebo>
+
+    <gazebo reference="${prefix}left_inner_knuckle">
+      <selfCollide>false</selfCollide>
+      <mu1>20.0</mu1>
+      <mu2>20.0</mu2>
+      <kp>50000.0</kp>
     </gazebo>
 
     <gazebo reference="${prefix}right_inner_knuckle">
       <selfCollide>false</selfCollide>
+      <mu1>20.0</mu1>
+      <mu2>20.0</mu2>
+      <kp>50000.0</kp>
+    </gazebo>
+
+    <gazebo reference="${prefix}left_outer_knuckle">
+      <selfCollide>false</selfCollide>
+      <mu1>20.0</mu1>
+      <mu2>20.0</mu2>
+    </gazebo>
+    <gazebo reference="${prefix}right_outer_knuckle">
+      <selfCollide>false</selfCollide>
+      <mu1>20.0</mu1>
+      <mu2>20.0</mu2>
     </gazebo>
 
   </xacro:macro>

@@ -10,7 +10,7 @@ int main(int argc, char **argv)
     rclcpp::init(argc, argv);
     rclcpp::NodeOptions node_options;
     node_options.automatically_declare_parameters_from_overrides(true);
-    auto node = rclcpp::Node::make_shared("mtc_final_picker", node_options);
+    auto node = rclcpp::Node::make_shared("mtc_safe_picker", node_options);
 
     xarm_planner::XArmPlanner arm_planner(node, "xarm7"); 
     xarm_planner::XArmPlanner gripper_planner(node, "xarm_gripper");
@@ -33,30 +33,17 @@ int main(int argc, char **argv)
         return obj;
     }();
 
+    // 2. Setup the "Table Surface" (Brown)
     auto const table_surface = [] {
         moveit_msgs::msg::CollisionObject obj;
         obj.header.frame_id = "world";
         obj.id = "table_surface";
         shape_msgs::msg::SolidPrimitive primitive;
         primitive.type = shape_msgs::msg::SolidPrimitive::BOX;
-        
-        // Standard dimensions (Length, Width, Thickness)
         primitive.dimensions = {1.5, 0.8, 0.01}; 
-        
         geometry_msgs::msg::Pose pose;
-        
-        // --- APPLY 90 DEGREE ROTATION ON Y-AXIS ---
-        // Formula: w = cos(45°), y = sin(45°)
-        pose.orientation.x = 0.0;
-        pose.orientation.y = 0.0;
-        pose.orientation.z = 0.7071; // sin(45°)
-        pose.orientation.w = 0.7071;
-
-        // Position coordinates from your provided snippet
-        pose.position.x = -0.34; 
-        pose.position.y = -0.20; 
-        pose.position.z = -0.005; 
-
+        pose.orientation.z = 0.7071; pose.orientation.w = 0.7071;
+        pose.position.x = -0.34; pose.position.y = -0.20; pose.position.z = -0.005; 
         obj.primitives.push_back(primitive);
         obj.primitive_poses.push_back(pose);
         obj.operation = moveit_msgs::msg::CollisionObject::ADD;
@@ -66,7 +53,7 @@ int main(int argc, char **argv)
     psi.applyCollisionObject(target_cube);
     psi.applyCollisionObject(table_surface);
 
-    // 3. Apply Colors via PlanningScene Diff
+    // 3. Apply Colors (RETAINED)
     moveit_msgs::msg::PlanningScene planning_scene;
     planning_scene.is_diff = true;
     moveit_msgs::msg::ObjectColor cube_color;
@@ -75,44 +62,101 @@ int main(int argc, char **argv)
     moveit_msgs::msg::ObjectColor table_color;
     table_color.id = "table_surface";
     table_color.color.r = 0.58; table_color.color.g = 0.29; table_color.color.b = 0.0; table_color.color.a = 0.8;
-    
     planning_scene.object_colors.push_back(cube_color);
     planning_scene.object_colors.push_back(table_color);
     psi.applyPlanningScene(planning_scene);
 
-    // 4. STAGE: Approach
-    geometry_msgs::msg::Pose target_pose;
-    target_pose.orientation.x = 1.0; target_pose.orientation.w = 0.0; 
-    target_pose.position.x = -0.34; target_pose.position.y = -0.20; target_pose.position.z = 0.15;
+    // --- 2. DEFINE GRIPPER VECTORS (6-element format) ---
+    std::vector<double> gripper_open(6, 0.0);
+    std::vector<double> gripper_close(6, 0.46);
 
+    // 4. STAGE: Approach (Safety Included)
+    geometry_msgs::msg::Pose approach_pose;
+    approach_pose.orientation.x = 1.0; approach_pose.orientation.w = 0.0; 
+    approach_pose.position.x = -0.34; approach_pose.position.y = -0.20; approach_pose.position.z = 0.15;
+    
     RCLCPP_INFO(node->get_logger(), "Executing STAGE: Approach");
-    if (arm_planner.planPoseTarget(target_pose)) arm_planner.executePath();
+    if (!arm_planner.planPoseTarget(approach_pose)) {
+        RCLCPP_ERROR(node->get_logger(), "Approach planning failed! Stopping.");
+        return 1;
+    }
+    arm_planner.executePath();
 
-    // 5. STAGE: Pre-Attach (Collision Bypass)
+
+    
+    // 5. STAGE: Cartesian Pick (THE STRAIGHT LINE MOVE)
+    geometry_msgs::msg::Pose pick_pose;
+    pick_pose.orientation.x = 1.0; pick_pose.orientation.w = 0.0; 
+    pick_pose.position.x = -0.34; pick_pose.position.y = -0.20; pick_pose.position.z = 0.015;
+    
+    std::vector<geometry_msgs::msg::Pose> cartesian_waypoints;
+    cartesian_waypoints.push_back(pick_pose);
+
+    RCLCPP_INFO(node->get_logger(), "STAGE: Cartesian Lowering");
+    // Using planCartesianPath instead of planPoseTarget
+    if (!arm_planner.planCartesianPath(cartesian_waypoints)) {
+        RCLCPP_ERROR(node->get_logger(), "Cartesian Pick Planning Failed!");
+        return 1;
+    }
+    arm_planner.executePath();
+
+    // --- STAGE: THE "GHOST" (Ignore collision before pick) ---
+    RCLCPP_INFO(node->get_logger(), "STAGE: Enabling 'Ghost' mode for cube contact");
     moveit_msgs::msg::AttachedCollisionObject allow_touch;
     allow_touch.link_name = "link_tcp"; 
     allow_touch.object = target_cube;
     allow_touch.object.operation = moveit_msgs::msg::CollisionObject::ADD;
+
+    // Add every part of the gripper that might touch the cube
+    allow_touch.touch_links = {
+        "left_finger", "right_finger", 
+        "left_inner_knuckle", "right_inner_knuckle", 
+        "left_outer_knuckle", "right_outer_knuckle",
+        "link_tcp", "xarm_gripper_base_link"
+    };
     psi.applyAttachedCollisionObject(allow_touch);
+    // Short delay to let the Planning Scene "Referee" update the rules
+    rclcpp::sleep_for(std::chrono::milliseconds(200));
+    
 
-    // 6. STAGE: Lower to Grasp Height
-    target_pose.position.z = 0.035; 
-    if (arm_planner.planPoseTarget(target_pose)) arm_planner.executePath();
+    // 7. STAGE: Grasp (Using the working format)
+    // 1. Print to terminal (Optional, for your logs)
+    RCLCPP_INFO(node->get_logger(), "STAGE: Grasp - Sending close command");
 
-    // 7. STAGE: Grasp
-    std::vector<double> gripper_close = {0.85}; 
+    // 2. PLAN: Calculate the move using your stored 'gripper_close' vector (6, 0.85)
     if (gripper_planner.planJointTarget(gripper_close)) {
-        gripper_planner.executePath();
+        
+        // 3. EXECUTE: This is the command that actually MOVES the gripper
+        gripper_planner.executePath(); 
+        
+        // 4. WAIT: Give Gazebo 2 seconds to finish the physical movement
         rclcpp::sleep_for(std::chrono::milliseconds(2000)); 
+        
+        RCLCPP_INFO(node->get_logger(), "Gripper closed successfully.");
+    } else {
+        // This only runs if the math failed (e.g., joint limits exceeded)
+        RCLCPP_ERROR(node->get_logger(), "Gripper planning failed! Motor will not move.");
+        return 1;
     }
 
-    // 8. STAGE: Lift
-    target_pose.position.z = 0.25; 
-    if (arm_planner.planPoseTarget(target_pose)) {
-        arm_planner.executePath();
-        RCLCPP_INFO(node->get_logger(), "MTC-style Pick Sequence Complete!");
-    }
+    // 5. STAGE: Cartesian After Pick (THE STRAIGHT LINE MOVE)
+    geometry_msgs::msg::Pose above_pick_pose;
+    above_pick_pose.orientation.x = 1.0; above_pick_pose.orientation.w = 0.0; 
+    above_pick_pose.position.x = -0.34; above_pick_pose.position.y = -0.20; above_pick_pose.position.z = 0.15;
+    
+   
+    cartesian_waypoints.push_back(above_pick_pose);
 
+    RCLCPP_INFO(node->get_logger(), "STAGE: Cartesian Above Pick");
+    // Using planCartesianPath instead of planPoseTarget
+    if (!arm_planner.planCartesianPath(cartesian_waypoints)) {
+        RCLCPP_ERROR(node->get_logger(), "Cartesian After Pick Planning Failed!");
+        return 1;
+    }
+    
+    arm_planner.executePath();
+
+    RCLCPP_INFO(node->get_logger(), "MTC-style Safe Pick Sequence Complete!");
     rclcpp::shutdown();
     return 0;
 }

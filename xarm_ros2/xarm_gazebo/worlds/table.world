@@ -12,17 +12,25 @@
       <uri>model://table</uri>
       <name>table</name>
       <pose>0.0 -0.84 0 0 0 0</pose>
+      <surface> 
+        <friction>
+          <ode>
+            <mu>0.01</mu>
+            <mu2>0.01</mu2>
+          </ode>
+        </friction>
+      </surface>
     </include>
 
     <model name="target_cube">
       <pose>0.0 -0.84 1.04 0 0 0</pose>
       <link name="link">
         <inertial>
-          <mass>0.05</mass>
+          <mass>0.2</mass>
           <inertia>
-            <ixx>0.000020833</ixx><ixy>0</ixy><ixz>0</ixz>
-            <iyy>0.000020833</iyy><iyz>0</iyz>
-            <izz>0.000020833</izz>
+            <ixx>0.000083333</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>0.000083333</iyy><iyz>0</iyz>
+            <izz>0.000083333</izz>
           </inertia>
         </inertial>
         <collision name="collision">
@@ -34,10 +42,18 @@
           <surface>
             <friction>
               <ode>
-                <mu>1.5</mu>
-                <mu2>1.5</mu2>
+                <mu>20.0</mu>
+                <mu2>20.0</mu2>
               </ode>
             </friction>
+            <contact>
+              <ode>
+                <kp>100000.0</kp>
+                <kd>100.0</kd>
+                <min_depth>0.005</min_depth>
+                <maxVel>0.01</maxVel>
+              </ode>
+            </contact>
           </surface>
         </collision>
         <visual name="visual">
