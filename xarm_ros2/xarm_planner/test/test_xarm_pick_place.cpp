@@ -5,6 +5,10 @@
 #include <moveit_msgs/msg/attached_collision_object.hpp>
 #include <moveit_msgs/msg/planning_scene.hpp>
 
+// --- SERVICE HEADER ---
+#include "linkattacher_msgs/srv/attach_link.hpp"
+#include "linkattacher_msgs/srv/detach_link.hpp"
+
 int main(int argc, char **argv)
 {
     rclcpp::init(argc, argv);
@@ -15,6 +19,10 @@ int main(int argc, char **argv)
     xarm_planner::XArmPlanner arm_planner(node, "xarm7"); 
     xarm_planner::XArmPlanner gripper_planner(node, "xarm_gripper");
     moveit::planning_interface::PlanningSceneInterface psi;
+
+    // --- SERVICE CLIENTS (FIXED LINE 26) ---
+    auto attach_client = node->create_client<linkattacher_msgs::srv::AttachLink>("/ATTACHLINK");
+    auto detach_client = node->create_client<linkattacher_msgs::srv::DetachLink>("/DETACHLINK");
 
     // 1. Setup the "Target Cube" (Red)
     auto const target_cube = [] {
@@ -53,7 +61,7 @@ int main(int argc, char **argv)
     psi.applyCollisionObject(target_cube);
     psi.applyCollisionObject(table_surface);
 
-    // 3. Apply Colors (RETAINED)
+    // 3. Apply Colors
     moveit_msgs::msg::PlanningScene planning_scene;
     planning_scene.is_diff = true;
     moveit_msgs::msg::ObjectColor cube_color;
@@ -66,25 +74,19 @@ int main(int argc, char **argv)
     planning_scene.object_colors.push_back(table_color);
     psi.applyPlanningScene(planning_scene);
 
-    // --- 2. DEFINE GRIPPER VECTORS (6-element format) ---
     std::vector<double> gripper_open(6, 0.0);
-    std::vector<double> gripper_close(6, 0.46);
+    std::vector<double> gripper_close(6, 0.42);
 
-    // 4. STAGE: Approach (Safety Included)
+    // 4. STAGE: Approach
     geometry_msgs::msg::Pose approach_pose;
     approach_pose.orientation.x = 1.0; approach_pose.orientation.w = 0.0; 
     approach_pose.position.x = -0.34; approach_pose.position.y = -0.20; approach_pose.position.z = 0.15;
     
     RCLCPP_INFO(node->get_logger(), "Executing STAGE: Approach");
-    if (!arm_planner.planPoseTarget(approach_pose)) {
-        RCLCPP_ERROR(node->get_logger(), "Approach planning failed! Stopping.");
-        return 1;
-    }
+    if (!arm_planner.planPoseTarget(approach_pose)) return 1;
     arm_planner.executePath();
 
-
-    
-    // 5. STAGE: Cartesian Pick (THE STRAIGHT LINE MOVE)
+    // STAGE: Cartesian Lowering
     geometry_msgs::msg::Pose pick_pose;
     pick_pose.orientation.x = 1.0; pick_pose.orientation.w = 0.0; 
     pick_pose.position.x = -0.34; pick_pose.position.y = -0.20; pick_pose.position.z = 0.015;
@@ -93,70 +95,122 @@ int main(int argc, char **argv)
     cartesian_waypoints.push_back(pick_pose);
 
     RCLCPP_INFO(node->get_logger(), "STAGE: Cartesian Lowering");
-    // Using planCartesianPath instead of planPoseTarget
-    if (!arm_planner.planCartesianPath(cartesian_waypoints)) {
-        RCLCPP_ERROR(node->get_logger(), "Cartesian Pick Planning Failed!");
-        return 1;
-    }
+    if (!arm_planner.planCartesianPath(cartesian_waypoints)) return 1;
     arm_planner.executePath();
 
-    // --- STAGE: THE "GHOST" (Ignore collision before pick) ---
-    RCLCPP_INFO(node->get_logger(), "STAGE: Enabling 'Ghost' mode for cube contact");
+    // --- STAGE: Enabling 'Ghost' mode ---
     moveit_msgs::msg::AttachedCollisionObject allow_touch;
     allow_touch.link_name = "link_tcp"; 
     allow_touch.object = target_cube;
     allow_touch.object.operation = moveit_msgs::msg::CollisionObject::ADD;
-
-    // Add every part of the gripper that might touch the cube
-    allow_touch.touch_links = {
-        "left_finger", "right_finger", 
-        "left_inner_knuckle", "right_inner_knuckle", 
-        "left_outer_knuckle", "right_outer_knuckle",
-        "link_tcp", "xarm_gripper_base_link"
-    };
+    allow_touch.touch_links = {"left_finger", "right_finger", "left_inner_knuckle", "right_inner_knuckle", "link_tcp"};
     psi.applyAttachedCollisionObject(allow_touch);
-    // Short delay to let the Planning Scene "Referee" update the rules
     rclcpp::sleep_for(std::chrono::milliseconds(200));
-    
 
-    // 7. STAGE: Grasp (Using the working format)
-    // 1. Print to terminal (Optional, for your logs)
+    // STAGE: Grasp
     RCLCPP_INFO(node->get_logger(), "STAGE: Grasp - Sending close command");
-
-    // 2. PLAN: Calculate the move using your stored 'gripper_close' vector (6, 0.85)
     if (gripper_planner.planJointTarget(gripper_close)) {
-        
-        // 3. EXECUTE: This is the command that actually MOVES the gripper
         gripper_planner.executePath(); 
-        
-        // 4. WAIT: Give Gazebo 2 seconds to finish the physical movement
         rclcpp::sleep_for(std::chrono::milliseconds(2000)); 
         
-        RCLCPP_INFO(node->get_logger(), "Gripper closed successfully.");
-    } else {
-        // This only runs if the math failed (e.g., joint limits exceeded)
-        RCLCPP_ERROR(node->get_logger(), "Gripper planning failed! Motor will not move.");
-        return 1;
+        // --- ATTACH LINK IN GAZEBO ---
+        auto request = std::make_shared<linkattacher_msgs::srv::AttachLink::Request>();
+        request->model1_name = "UF_ROBOT";
+        request->link1_name = "link7";
+        request->model2_name = "target_cube";
+        request->link2_name = "link";
+
+        if (!attach_client->wait_for_service(std::chrono::seconds(5))) {
+            RCLCPP_ERROR(node->get_logger(), "Service /ATTACHLINK not available!");
+        } else {
+            auto result = attach_client->async_send_request(request);
+            rclcpp::spin_until_future_complete(node, result);
+        }
     }
 
-    // 5. STAGE: Cartesian After Pick (THE STRAIGHT LINE MOVE)
+    // 5. STAGE: Cartesian Lift
     geometry_msgs::msg::Pose above_pick_pose;
     above_pick_pose.orientation.x = 1.0; above_pick_pose.orientation.w = 0.0; 
     above_pick_pose.position.x = -0.34; above_pick_pose.position.y = -0.20; above_pick_pose.position.z = 0.15;
     
-   
-    cartesian_waypoints.push_back(above_pick_pose);
+    std::vector<geometry_msgs::msg::Pose> lift_waypoints;
+    lift_waypoints.push_back(above_pick_pose);
 
-    RCLCPP_INFO(node->get_logger(), "STAGE: Cartesian Above Pick");
-    // Using planCartesianPath instead of planPoseTarget
-    if (!arm_planner.planCartesianPath(cartesian_waypoints)) {
-        RCLCPP_ERROR(node->get_logger(), "Cartesian After Pick Planning Failed!");
-        return 1;
+    RCLCPP_INFO(node->get_logger(), "STAGE: Cartesian Lift");
+    if (arm_planner.planCartesianPath(lift_waypoints)) {
+        arm_planner.executePath();
     }
-    
-    arm_planner.executePath();
 
-    RCLCPP_INFO(node->get_logger(), "MTC-style Safe Pick Sequence Complete!");
+    // 6. STAGE: Above place position
+    geometry_msgs::msg::Pose above_place_pose;
+    above_place_pose.orientation.x = 1.0; above_place_pose.orientation.w = 0.0; 
+    above_place_pose.position.x = -0.34; above_place_pose.position.y = -0.40; above_place_pose.position.z = 0.15;
+
+    std::vector<geometry_msgs::msg::Pose> place_waypoints;
+    place_waypoints.push_back(above_place_pose);
+
+    RCLCPP_INFO(node->get_logger(), "STAGE: Cartesian sideways");
+    if (arm_planner.planCartesianPath(place_waypoints)) {
+        arm_planner.executePath();
+    }
+
+    // 7. STAGE: Place position
+    geometry_msgs::msg::Pose place_pose;
+    place_pose.orientation.x = 1.0; place_pose.orientation.w = 0.0; 
+    place_pose.position.x = -0.34; place_pose.position.y = -0.40; place_pose.position.z = 0.020;
+    
+    std::vector<geometry_msgs::msg::Pose> final_drop_waypoints;
+    final_drop_waypoints.push_back(place_pose);
+
+    RCLCPP_INFO(node->get_logger(), "STAGE: Cartesian Place");
+    if (arm_planner.planCartesianPath(final_drop_waypoints)) {
+        arm_planner.executePath();
+    }
+
+    // STAGE: Opening of gripper and Detaching
+    RCLCPP_INFO(node->get_logger(), "STAGE: Opening Gripper and Detaching Cube");
+
+    if (gripper_planner.planJointTarget(gripper_open)) {
+        gripper_planner.executePath(); 
+        rclcpp::sleep_for(std::chrono::milliseconds(2000)); 
+        
+        // 1. FIXED: Removed 'auto' re-declaration, using the client from line 26
+        auto detach_request = std::make_shared<linkattacher_msgs::srv::DetachLink::Request>();
+        detach_request->model1_name = "UF_ROBOT";
+        detach_request->link1_name = "link7";
+        detach_request->model2_name = "target_cube";
+        detach_request->link2_name = "link";
+
+        if (!detach_client->wait_for_service(std::chrono::seconds(10))) {
+            RCLCPP_ERROR(node->get_logger(), "Service /DETACHLINK still not available!");
+        } else {
+            auto result = detach_client->async_send_request(detach_request);
+            if (rclcpp::spin_until_future_complete(node, result) == rclcpp::FutureReturnCode::SUCCESS) {
+                RCLCPP_INFO(node->get_logger(), "Gazebo: Cube successfully detached.");
+                
+                moveit_msgs::msg::AttachedCollisionObject detach_object;
+                detach_object.object.id = "target_cube";
+                detach_object.link_name = "link_tcp";
+                detach_object.object.operation = moveit_msgs::msg::CollisionObject::REMOVE;
+                psi.applyAttachedCollisionObject(detach_object);
+            }
+        }
+    }
+
+    // Final Stage: Move back to above place position to clear the object
+    geometry_msgs::msg::Pose clear_pose;
+    clear_pose.orientation.x = 1.0; clear_pose.orientation.w = 0.0; 
+    clear_pose.position.x = -0.34; clear_pose.position.y = -0.40; clear_pose.position.z = 0.15;
+    
+    std::vector<geometry_msgs::msg::Pose> clear_waypoints;
+    clear_waypoints.push_back(clear_pose);
+
+    RCLCPP_INFO(node->get_logger(), "STAGE: Final clearing move");
+    if (arm_planner.planCartesianPath(clear_waypoints)) {
+        arm_planner.executePath();
+    }
+
+    RCLCPP_INFO(node->get_logger(), "Pick and Place Sequence Complete!");
     rclcpp::shutdown();
     return 0;
 }

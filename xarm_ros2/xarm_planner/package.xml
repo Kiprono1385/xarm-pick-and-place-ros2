@@ -18,6 +18,7 @@
   <depend>xarm_msgs</depend>
   <depend>xarm_description</depend>
   <depend>xarm_moveit_config</depend>
+  <depend>linkattacher_msgs</depend>
 
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
