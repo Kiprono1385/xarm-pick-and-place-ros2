@@ -1,10 +1,10 @@
-# 🤖 UFactory xArm7 ROS 2 Pick & Place with Gazebo Attachment
+#  UFactory xArm7 ROS 2 Pick & Place with Gazebo Attachment
 
 This project demonstrates a **complete pick-and-place simulation** using **ROS 2**, **MoveIt 2**, and **Gazebo**, including cube grasping, attachment, transport, and placement.
 
 ---
 
-# 🚀 Overview
+#  Overview
 
 This project implements a structured robotic **pick-and-place pipeline** for the **xArm7 robotic manipulator**.
 
@@ -22,13 +22,13 @@ The robot successfully picks a cube from a table surface and places it at a new 
 
 ---
 
-# 📸 Gazebo Simulation Results
+#  Gazebo Simulation Results
 
 These images automatically appear when the README is opened on GitHub.
 
 ---
 
-## 🌍 Gazebo — Before Grasp
+##  Gazebo — Before Grasp
 
 Initial setup showing the cube resting on the table before the robot grasps it.
 
@@ -36,7 +36,7 @@ Initial setup showing the cube resting on the table before the robot grasps it.
 
 ---
 
-## 🧲 Gazebo — After Grasp (Cube Attached)
+##  Gazebo — After Grasp (Cube Attached)
 
 Cube attached to the robot gripper during transport.
 
@@ -44,13 +44,13 @@ Cube attached to the robot gripper during transport.
 
 ---
 
-# 🎥 Pick-and-Place Simulation Video
+#  Pick-and-Place Simulation Video
 
 [▶️ Watch Pick-and-Place Simulation Video](PASTE_YOUR_VIDEO_LINK_HERE)
 
 ---
 
-# ✨ Key Features
+#  Key Features
 
 Main implementation file:
 xarm_planner/test/test_xarm_pick_place.cpp
@@ -66,11 +66,11 @@ Core functionality includes:
 
 ---
 
-# 📦 Planning Scene Configuration
+#  Planning Scene Configuration
 
 The simulation dynamically creates the working environment.
 
-## 🔴 Target Cube
+##  Target Cube
 
 - Shape: Box  
 - Size: 0.05 × 0.05 × 0.05 m  
@@ -83,7 +83,7 @@ z = 0.025
 
 ---
 
-## 🟫 Table Surface
+##  Table Surface
 
 - Shape: Box  
 - Size: 1.5 × 0.8 × 0.01 m  
@@ -91,7 +91,7 @@ z = 0.025
 
 ---
 
-# 📍 Pick-and-Place Motion Sequence
+#  Pick-and-Place Motion Sequence
 
 The robot executes the following stages:
 
@@ -108,7 +108,7 @@ The robot executes the following stages:
 
 ---
 
-# 📐 Motion Pose Definitions
+#  Motion Pose Definitions
 
 | Stage | Position (x, y, z) |
 |------|--------------------|
@@ -121,7 +121,7 @@ The robot executes the following stages:
 
 ---
 
-# 🤏 Gripper Configuration
+#  Gripper Configuration
 
 | Action | Joint Values |
 |-------|---------------|
@@ -130,7 +130,7 @@ The robot executes the following stages:
 
 ---
 
-# 🔗 Gazebo Object Attachment
+#  Gazebo Object Attachment
 
 This project uses:
 linkattacher_msgs
@@ -151,7 +151,7 @@ These allow:
 
 ---
 
-# 🚀 Running the Simulation
+#  Running the Simulation
 
 ## Build
 
@@ -170,7 +170,7 @@ dof:=7 robot_type:=xarm \
 add_gripper:=true \
 add_vacuum_gripper:=false
 ```
-## 📂 Project Structure
+##  Project Structure
 ```bash
 xarm_ros2/
 │
@@ -187,18 +187,18 @@ xarm_ros2/
 │
 └── README.md
 ```
-## 🔮 Future Work
+##  Future Work
 Vision-based object detection (OpenCV / AI) <br>
 Multi-object manipulation <br>
 Dynamic target selection <br>
 Mobile robot integration (AGV) <br>
 MoveIt Task Constructor (MTC) workflow <br>
-## 👤 Author
+##  Author
 
 Brian Kiprono
 Robotics | ROS 2 | Automation Systems
 
-## ⭐ Acknowledgements
+##  Acknowledgements
 UFACTORY xArm platform <br>
 ROS 2 community <br>
 MoveIt 2 developers <br>
