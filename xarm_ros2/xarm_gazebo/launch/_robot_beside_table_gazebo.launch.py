@@ -31,7 +31,7 @@ def launch_setup(context, *args, **kwargs):
     limited = LaunchConfiguration('limited', default=False)
     effort_control = LaunchConfiguration('effort_control', default=False)
     velocity_control = LaunchConfiguration('velocity_control', default=False)
-    add_gripper = LaunchConfiguration('add_gripper', default=False)
+    add_gripper = LaunchConfiguration('add_gripper', default=True)
     add_vacuum_gripper = LaunchConfiguration('add_vacuum_gripper', default=False)
     add_bio_gripper = LaunchConfiguration('add_bio_gripper', default=False)
     dof = LaunchConfiguration('dof', default=7)
@@ -162,7 +162,7 @@ def launch_setup(context, *args, **kwargs):
                 '-topic', 'robot_description',
                 # '-name', '{}'.format(xarm_type),
                 '-name', 'UF_ROBOT',
-                '-x', '-0.2',
+                '-x', '0.0',
                 '-y', '-0.54' if robot_type.perform(context) == 'uf850' else '-0.5',
                 '-z', '1.021',
                 '-Y', '1.571',
@@ -217,7 +217,7 @@ def launch_setup(context, *args, **kwargs):
                 '-topic', 'robot_description',
                 # '-name', '{}'.format(xarm_type),
                 '-name', 'UF_ROBOT',
-                '-x', '-0.2',
+                '-x', '0.0',
                 '-y', '-0.54' if robot_type.perform(context) == 'uf850' else '-0.5',
                 '-z', '1.021',
                 '-Y', '1.571',
@@ -273,7 +273,7 @@ def launch_setup(context, *args, **kwargs):
                 '-topic', 'robot_description',
                 # '-entity', '{}'.format(xarm_type),
                 '-entity', 'UF_ROBOT',
-                '-x', '-0.2',
+                '-x', '0.0',
                 '-y', '-0.54' if robot_type.perform(context) == 'uf850' else '-0.5',
                 '-z', '1.021',
                 '-Y', '1.571',

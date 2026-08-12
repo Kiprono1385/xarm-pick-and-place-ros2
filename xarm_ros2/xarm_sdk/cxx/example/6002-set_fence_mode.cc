@@ -18,7 +18,7 @@ int main(int argc, char **argv) {
   }
   std::string port(argv[1]);
 
-  XArmAPI *arm = new XArmAPI(port);
+  auto arm = std::make_shared<XArmAPI>(port);
   sleep_milliseconds(500);
   if (arm->error_code != 0) arm->clean_error();
   if (arm->warn_code != 0) arm->clean_warn();
@@ -33,16 +33,16 @@ int main(int argc, char **argv) {
   int boundary[6] = {500, -500, 500, -500, 600, -400};
   ret = arm->set_reduced_tcp_boundary(boundary);
   printf("set_reduced_tcp_boundary, ret=%d\n", ret);
-  ret = arm->set_fense_mode(true);
-  printf("set_fense_mode, ret=%d\n", ret);
+  ret = arm->set_fence_mode(true);
+  printf("set_fence_mode, ret=%d\n", ret);
 
-  // int reduced_is_on, fense_is_on, rebound_is_on;
+  // int reduced_is_on, fence_is_on, rebound_is_on;
   // int xyz_limit[6];
   // float tcp_speed, joint_speed;
   // float jrange[14];
-  // ret = arm->get_reduced_states(&reduced_is_on, xyz_limit, &tcp_speed, &joint_speed, jrange, &fense_is_on, &rebound_is_on);
+  // ret = arm->get_reduced_states(&reduced_is_on, xyz_limit, &tcp_speed, &joint_speed, jrange, &fence_is_on, &rebound_is_on);
   // printf("get_reduced_states, ret=%d\n", ret);
-  // printf("* fense_is_on: %d\n", fense_is_on);
+  // printf("* fence_is_on: %d\n", fence_is_on);
   // printf("* boundary:\n");
   // printf("     x=[%d, %d]\n", xyz_limit[0], xyz_limit[1]);
   // printf("     y=[%d, %d]\n", xyz_limit[2], xyz_limit[3]);

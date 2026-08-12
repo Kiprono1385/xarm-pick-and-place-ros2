@@ -34,7 +34,7 @@ int main(int argc, char **argv)
         primitive.dimensions = {0.05, 0.05, 0.05};
         geometry_msgs::msg::Pose pose;
         pose.orientation.x = 1.0; pose.orientation.w = 0.0; 
-        pose.position.x = -0.34; pose.position.y = -0.20; pose.position.z = 0.025; 
+        pose.position.x = -0.44; pose.position.y = 0.50; pose.position.z = 0.025; 
         obj.primitives.push_back(primitive);
         obj.primitive_poses.push_back(pose);
         obj.operation = moveit_msgs::msg::CollisionObject::ADD;
@@ -80,7 +80,7 @@ int main(int argc, char **argv)
     // 4. STAGE: Approach
     geometry_msgs::msg::Pose approach_pose;
     approach_pose.orientation.x = 1.0; approach_pose.orientation.w = 0.0; 
-    approach_pose.position.x = -0.34; approach_pose.position.y = -0.20; approach_pose.position.z = 0.15;
+    approach_pose.position.x = -0.44; approach_pose.position.y = 0.50; approach_pose.position.z = 0.15;
     
     RCLCPP_INFO(node->get_logger(), "Executing STAGE: Approach");
     if (!arm_planner.planPoseTarget(approach_pose)) return 1;
@@ -89,7 +89,7 @@ int main(int argc, char **argv)
     // STAGE: Cartesian Lowering
     geometry_msgs::msg::Pose pick_pose;
     pick_pose.orientation.x = 1.0; pick_pose.orientation.w = 0.0; 
-    pick_pose.position.x = -0.34; pick_pose.position.y = -0.20; pick_pose.position.z = 0.015;
+    pick_pose.position.x = -0.44; pick_pose.position.y = 0.50; pick_pose.position.z = 0.015;
     
     std::vector<geometry_msgs::msg::Pose> cartesian_waypoints;
     cartesian_waypoints.push_back(pick_pose);
@@ -131,7 +131,7 @@ int main(int argc, char **argv)
     // 5. STAGE: Cartesian Lift
     geometry_msgs::msg::Pose above_pick_pose;
     above_pick_pose.orientation.x = 1.0; above_pick_pose.orientation.w = 0.0; 
-    above_pick_pose.position.x = -0.34; above_pick_pose.position.y = -0.20; above_pick_pose.position.z = 0.15;
+    above_pick_pose.position.x = -0.44; above_pick_pose.position.y = 0.50; above_pick_pose.position.z = 0.15;
     
     std::vector<geometry_msgs::msg::Pose> lift_waypoints;
     lift_waypoints.push_back(above_pick_pose);
@@ -144,7 +144,7 @@ int main(int argc, char **argv)
     // 6. STAGE: Above place position
     geometry_msgs::msg::Pose above_place_pose;
     above_place_pose.orientation.x = 1.0; above_place_pose.orientation.w = 0.0; 
-    above_place_pose.position.x = -0.34; above_place_pose.position.y = -0.40; above_place_pose.position.z = 0.15;
+    above_place_pose.position.x = -0.44; above_place_pose.position.y = -0.30; above_place_pose.position.z = 0.15;
 
     std::vector<geometry_msgs::msg::Pose> place_waypoints;
     place_waypoints.push_back(above_place_pose);
@@ -157,7 +157,7 @@ int main(int argc, char **argv)
     // 7. STAGE: Place position
     geometry_msgs::msg::Pose place_pose;
     place_pose.orientation.x = 1.0; place_pose.orientation.w = 0.0; 
-    place_pose.position.x = -0.34; place_pose.position.y = -0.40; place_pose.position.z = 0.020;
+    place_pose.position.x = -0.44; place_pose.position.y = -0.30; place_pose.position.z = 0.020;
     
     std::vector<geometry_msgs::msg::Pose> final_drop_waypoints;
     final_drop_waypoints.push_back(place_pose);
@@ -200,7 +200,7 @@ int main(int argc, char **argv)
     // Final Stage: Move back to above place position to clear the object
     geometry_msgs::msg::Pose clear_pose;
     clear_pose.orientation.x = 1.0; clear_pose.orientation.w = 0.0; 
-    clear_pose.position.x = -0.34; clear_pose.position.y = -0.40; clear_pose.position.z = 0.15;
+    clear_pose.position.x = -0.44; clear_pose.position.y = -0.30; clear_pose.position.z = 0.15;
     
     std::vector<geometry_msgs::msg::Pose> clear_waypoints;
     clear_waypoints.push_back(clear_pose);

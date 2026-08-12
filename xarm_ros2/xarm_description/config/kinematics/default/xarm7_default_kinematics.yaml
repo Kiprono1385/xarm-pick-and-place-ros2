@@ -5,7 +5,7 @@ kinematics:
     z: 0.267
     roll: 0
     pitch: 0
-    yaw: 0
+    yaw: 3.1416
   joint2:
     x: 0
     y: 0
@@ -39,7 +39,7 @@ kinematics:
     y: 0
     z: 0
     roll: 1.5708
-    pitch: 0
+    pitch: 1.5708
     yaw: 0
   joint7:
     x: 0.076
