@@ -7,6 +7,7 @@
 # Author: Vinman <vinman.cub@gmail.com>
 # Modified by Brian Kiprono
 # Changes: Added custom pick-and-place logic, updated motion planning, integrated ROS2 nodes
+#          Added planning_pipelines (OMPL) params to fix CHOMP fallback/segfault
 
 import yaml
 import json
@@ -94,12 +95,39 @@ def launch_setup(context, *args, **kwargs):
             geometry_mesh_tcp_rpy=geometry_mesh_tcp_rpy,
         ).to_moveit_configs()
         moveit_config_dict = moveit_config.to_dict()
-    
+
+    # --- DEBUG: print available keys so we can confirm exact pipeline key names ---
+    print(">>> MoveIt config dict keys:", list(moveit_config_dict.keys()))
+
     move_group_interface_params = {
         'robot_description': moveit_config_dict['robot_description'],
         'robot_description_semantic': moveit_config_dict['robot_description_semantic'],
         'robot_description_kinematics': moveit_config_dict['robot_description_kinematics'],
     }
+
+    # --- Add planning pipeline params (fixes OMPL not loading -> CHOMP fallback/segfault) ---
+    # Grab every planning-pipeline-related key that exists in the dict, defensively,
+    # since exact key names can vary slightly by moveit_configs_utils/uf_ros_lib version.
+    for key in (
+        'robot_description_planning',
+        'planning_pipelines',
+        'move_group_capabilities',
+        'ompl',
+        'chomp',
+        'planning_plugin',
+        'planning_scene_monitor',
+    ):
+        if key in moveit_config_dict:
+            move_group_interface_params[key] = moveit_config_dict[key]
+
+    # Explicit fallback: if 'planning_pipelines' wasn't in the dict but individual
+    # pipeline configs were exposed as separate top-level keys, this ensures the
+    # default pipeline is still set to ompl so PipelinePlanner("ompl") resolves correctly.
+    if 'planning_pipelines' not in move_group_interface_params:
+        move_group_interface_params['planning_pipelines'] = {
+            'pipeline_names': ['ompl'],
+            'default_planning_pipeline': 'ompl',
+        }
 
     node_executable = LaunchConfiguration('node_executable', default='xarm_planner_node')
     node_name = LaunchConfiguration('node_name', default=node_executable)

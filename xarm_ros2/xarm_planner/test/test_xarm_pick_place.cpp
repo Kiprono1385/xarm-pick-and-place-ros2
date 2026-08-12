@@ -20,7 +20,7 @@ int main(int argc, char **argv)
     xarm_planner::XArmPlanner gripper_planner(node, "xarm_gripper");
     moveit::planning_interface::PlanningSceneInterface psi;
 
-    // --- SERVICE CLIENTS (FIXED LINE 26) ---
+    // --- SERVICE CLIENTS ---
     auto attach_client = node->create_client<linkattacher_msgs::srv::AttachLink>("/ATTACHLINK");
     auto detach_client = node->create_client<linkattacher_msgs::srv::DetachLink>("/DETACHLINK");
 
@@ -41,7 +41,7 @@ int main(int argc, char **argv)
         return obj;
     }();
 
-    // 2. Setup the "Table Surface" (Brown)
+    // 2. Setup the "Table Surface" (Brown) — unchanged
     auto const table_surface = [] {
         moveit_msgs::msg::CollisionObject obj;
         obj.header.frame_id = "world";
@@ -105,13 +105,11 @@ int main(int argc, char **argv)
     allow_touch.object.operation = moveit_msgs::msg::CollisionObject::ADD;
     allow_touch.touch_links = {"left_finger", "right_finger", "left_inner_knuckle", "right_inner_knuckle", "link_tcp"};
     psi.applyAttachedCollisionObject(allow_touch);
-    rclcpp::sleep_for(std::chrono::milliseconds(200));
 
     // STAGE: Grasp
     RCLCPP_INFO(node->get_logger(), "STAGE: Grasp - Sending close command");
     if (gripper_planner.planJointTarget(gripper_close)) {
         gripper_planner.executePath(); 
-        rclcpp::sleep_for(std::chrono::milliseconds(2000)); 
         
         // --- ATTACH LINK IN GAZEBO ---
         auto request = std::make_shared<linkattacher_msgs::srv::AttachLink::Request>();
@@ -141,18 +139,14 @@ int main(int argc, char **argv)
         arm_planner.executePath();
     }
 
-    // 6. STAGE: Above place position
+    // 6. STAGE: Above place position — free-space transit
     geometry_msgs::msg::Pose above_place_pose;
     above_place_pose.orientation.x = 1.0; above_place_pose.orientation.w = 0.0; 
     above_place_pose.position.x = -0.44; above_place_pose.position.y = -0.30; above_place_pose.position.z = 0.15;
 
-    std::vector<geometry_msgs::msg::Pose> place_waypoints;
-    place_waypoints.push_back(above_place_pose);
-
-    RCLCPP_INFO(node->get_logger(), "STAGE: Cartesian sideways");
-    if (arm_planner.planCartesianPath(place_waypoints)) {
-        arm_planner.executePath();
-    }
+    RCLCPP_INFO(node->get_logger(), "STAGE: Move to above place pose (free-space)");
+    if (!arm_planner.planPoseTarget(above_place_pose)) return 1;
+    arm_planner.executePath();
 
     // 7. STAGE: Place position
     geometry_msgs::msg::Pose place_pose;
@@ -172,9 +166,7 @@ int main(int argc, char **argv)
 
     if (gripper_planner.planJointTarget(gripper_open)) {
         gripper_planner.executePath(); 
-        rclcpp::sleep_for(std::chrono::milliseconds(2000)); 
         
-        // 1. FIXED: Removed 'auto' re-declaration, using the client from line 26
         auto detach_request = std::make_shared<linkattacher_msgs::srv::DetachLink::Request>();
         detach_request->model1_name = "UF_ROBOT";
         detach_request->link1_name = "link7";
