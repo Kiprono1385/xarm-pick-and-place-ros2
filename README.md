@@ -47,7 +47,7 @@ Cube attached to the robot gripper during transport.
 
 #  Pick-and-Place Simulation Video
 
-[▶️ Watch Pick-and-Place Simulation Video](PASTE_YOUR_VIDEO_LINK_HERE)
+[▶️ Watch Pick-and-Place Simulation Video](https://photos.google.com/photo/AF1QipMB2-SZGM8RzIu7-xMj1p0oMw3huA_ESZGzilIk)
 
 ---
 
