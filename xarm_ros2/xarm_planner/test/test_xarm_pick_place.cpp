@@ -14,7 +14,24 @@ int main(int argc, char **argv)
     rclcpp::init(argc, argv);
     rclcpp::NodeOptions node_options;
     node_options.automatically_declare_parameters_from_overrides(true);
-    auto node = rclcpp::Node::make_shared("mtc_safe_picker", node_options);
+    auto node = rclcpp::Node::make_shared("test_xarm_pick_place", node_options);
+
+    // --- SEPARATE EMBEDDED GHOST RELAY NODE (Avoids executor conflicts) ---
+    auto relay_node = rclcpp::Node::make_shared("ghost_relay_internal");
+    auto ghost_pub = relay_node->create_publisher<trajectory_msgs::msg::JointTrajectory>("/ghost_trajectory", 10);
+    auto display_sub = relay_node->create_subscription<moveit_msgs::msg::DisplayTrajectory>(
+        "/display_planned_path", 10,
+        [ghost_pub](const moveit_msgs::msg::DisplayTrajectory::SharedPtr msg) {
+            if (!msg->trajectory.empty()) {
+                ghost_pub->publish(msg->trajectory[0].joint_trajectory);
+            }
+        });
+
+    std::thread spinner_thread([relay_node]() {
+        rclcpp::spin(relay_node);
+    });
+    spinner_thread.detach();
+    // -------------------------------------------------------------------
 
     xarm_planner::XArmPlanner arm_planner(node, "xarm7"); 
     xarm_planner::XArmPlanner gripper_planner(node, "xarm_gripper");

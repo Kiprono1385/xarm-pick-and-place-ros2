@@ -1,6 +1,6 @@
 #  UFactory xArm7 ROS 2 Pick & Place with Gazebo Attachment
 
-This project demonstrates a **complete pick-and-place simulation** using **ROS 2**, **MoveIt 2**, and **Gazebo**, including cube grasping, attachment, transport, and placement.
+This project demonstrates a **complete pick-and-place simulation** using **ROS 2**, **MoveIt 2**, and **Gazebo**, including cube grasping, attachment, transport, and placement. It also includes a **Unity digital twin** that visualizes planned trajectories in real time.
 
 ---
 
@@ -17,6 +17,7 @@ The system includes:
 - Collision-aware manipulation  
 - Gazebo cube attachment  
 - Multi-stage pick-and-place motion  
+- Unity digital twin with ghost trajectory visualization  
 
 The robot successfully picks a cube from a table surface and places it at a new location using safe motion planning.
 
@@ -63,6 +64,7 @@ Core functionality includes:
 - Gazebo cube attachment  
 - Structured stage-based motion  
 - Gripper control integration  
+- Unity ghost trajectory playback (`ghost_trajectory` subscriber)  
 
 ---
 
@@ -135,9 +137,7 @@ The robot executes the following stages:
 This project uses:
 linkattacher_msgs
 
-
 Services:
-
 
 /ATTACHLINK
 /DETACHLINK
@@ -159,9 +159,10 @@ These allow:
 colcon build --packages-select xarm_planner
 source install/setup.bash
 ```
-## Gazebo Simulation
-```bash
 
+## Gazebo Simulation
+
+```bash
 ros2 launch xarm_planner xarm7_planner_gazebo.launch.py \
 dof:=7 robot_type:=xarm add_gripper:=true
 
@@ -170,7 +171,31 @@ dof:=7 robot_type:=xarm \
 add_gripper:=true \
 add_vacuum_gripper:=false
 ```
+
+---
+
+#  Unity Digital Twin: Ghost Trajectory Subscriber (`ghost_trajectory`)
+
+## Overview
+The `ghost_trajectory` subscriber script provides a robust mechanism for visualizing and executing ROS 2 trajectory plans on the xArm 7 digital twin inside Unity. By subscribing to incoming path messages, it queues, synchronizes, and animates the robot's ArticulationBody hierarchy in real time.
+
+## Key Features
+* **ROS 2 Topic Subscription:** Listens to the `/ghost_trajectory` topic using standard `JointTrajectoryMsg` data structures.
+* **Master Buffer Queue:** Implements a buffering system to handle sequential playback of back-to-back trajectory steps without overlaps or dropped points.
+* **Dynamic Timestamp Interpolation:** Smoothly interpolates movement across trajectory waypoints to ensure fluid motion.
+* **Targeted Joint Mapping:** Automatically maps incoming joint states and incorporates specialized handling (such as a hardcoded 90-degree offset for `joint6`).
+* **Physics Integration:** Preserves existing ArticulationBody drive stiffness, damping, and mimic joint constraints during playback.
+
+## Installation & Setup
+1. **Add Component:** Attach the script to your root xArm 7 robot GameObject in your Unity scene hierarchy.
+2. **ROS-TCP Configuration:** Ensure your ROS-TCP-Connector is active and properly linked to your ROS 2 network workspace.
+3. **Topic Publishing:** Stream your trajectory or motion plan output from MoveIt 2 or custom ROS 2 nodes to the `/ghost_trajectory` topic.
+4. **Run Simulation:** Play your Unity scene to stream and animate the ghost trajectory live on your digital twin.
+
+---
+
 ##  Project Structure
+
 ```bash
 xarm_ros2/
 │
@@ -187,12 +212,15 @@ xarm_ros2/
 │
 └── README.md
 ```
+
 ##  Future Work
 Vision-based object detection (OpenCV / AI) <br>
 Multi-object manipulation <br>
 Dynamic target selection <br>
 Mobile robot integration (AGV) <br>
 MoveIt Task Constructor (MTC) workflow <br>
+Live Unity digital twin sync for the full pick-and-place sequence <br>
+
 ##  Author
 
 Brian Kiprono
@@ -203,4 +231,3 @@ UFACTORY xArm platform <br>
 ROS 2 community <br>
 MoveIt 2 developers <br>
 Gazebo simulation team
-
