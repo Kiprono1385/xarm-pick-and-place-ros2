@@ -16,10 +16,6 @@
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <Eigen/Core>
 
-// --- SERVICE HEADER ---
-#include "linkattacher_msgs/srv/attach_link.hpp"
-#include "linkattacher_msgs/srv/detach_link.hpp"
-
 #include <thread>
 #include <vector>
 #include <chrono>
@@ -36,7 +32,6 @@ moveit_msgs::msg::CollisionObject createMeshCollisionObject(
     collision_object.header.frame_id = frame_id; // Explicitly fixed to "world"
     collision_object.id = id;
 
-    // Pass scale as an Eigen::Vector3d for X, Y, Z dimensions (mm to meters conversion)
     Eigen::Vector3d scale_vector(scale, scale, scale);
     shapes::Mesh* m = shapes::createMeshFromResource("file://" + absolute_path, scale_vector);
     if (!m) {
@@ -62,36 +57,12 @@ int main(int argc, char **argv)
     rclcpp::init(argc, argv);
     rclcpp::NodeOptions node_options;
     node_options.automatically_declare_parameters_from_overrides(true);
-    auto node = rclcpp::Node::make_shared("pick_and_place_gazebo", node_options);
-
-    // --- EMBEDDED GHOST RELAY NODE ---
-    auto relay_node = rclcpp::Node::make_shared("ghost_relay_internal");
-    auto ghost_pub = relay_node->create_publisher<trajectory_msgs::msg::JointTrajectory>("/ghost_trajectory", 10);
-    auto display_sub = relay_node->create_subscription<moveit_msgs::msg::DisplayTrajectory>(
-        "/display_planned_path", 10,
-        [ghost_pub](const moveit_msgs::msg::DisplayTrajectory::SharedPtr msg) {
-            if (!msg->trajectory.empty()) {
-                ghost_pub->publish(msg->trajectory[0].joint_trajectory);
-            }
-        });
-
-    std::thread spinner_thread([relay_node]() {
-        rclcpp::spin(relay_node);
-    });
-    spinner_thread.detach();
+    auto node = rclcpp::Node::make_shared("pick_and_place_real", node_options);
 
     // Standard MoveIt 2 Interfaces
     moveit::planning_interface::MoveGroupInterface arm_move_group(node, "xarm7");
     moveit::planning_interface::MoveGroupInterface gripper_move_group(node, "xarm_gripper");
     moveit::planning_interface::PlanningSceneInterface psi;
-
-    // --- FORCE MAXIMUM SPEED/ACCELERATION FOR SIMULATION ---
-    arm_move_group.setMaxVelocityScalingFactor(1.0);
-    arm_move_group.setMaxAccelerationScalingFactor(1.0);
-
-    // --- SERVICE CLIENTS ---
-    auto attach_client = node->create_client<linkattacher_msgs::srv::AttachLink>("/ATTACHLINK");
-    auto detach_client = node->create_client<linkattacher_msgs::srv::DetachLink>("/DETACHLINK");
 
     // --- RESOLVE PACKAGE SHARE DIRECTORY AND LOAD SCENE STLs ---
     std::string package_share_dir = ament_index_cpp::get_package_share_directory("my_custom_package");
@@ -120,24 +91,24 @@ int main(int argc, char **argv)
     pose2.orientation.w = 0.7071; // cos(1.57 / 2)
     auto sorting_station = createMeshCollisionObject("assembly_sorting_station", station2_path, pose2, 0.001, "world");
 
-    // 3. Setup the "Target Cube" (Red box fallback for grasping)
-    auto const target_cube = [] {
+    // 3. Setup the Target Cylinder (4cm diameter, 2.5cm height)
+    auto const target_cylinder = [] {
         moveit_msgs::msg::CollisionObject obj;
         obj.header.frame_id = "world";
         obj.id = "target_cube";
         shape_msgs::msg::SolidPrimitive primitive;
-        primitive.type = shape_msgs::msg::SolidPrimitive::BOX;
-        primitive.dimensions = {0.05, 0.05, 0.05};
+        primitive.type = shape_msgs::msg::SolidPrimitive::CYLINDER;
+        primitive.dimensions = {0.025, 0.020}; // {height: 2.5cm, radius: 2.0cm -> 4cm diameter}
         geometry_msgs::msg::Pose pose;
         pose.orientation.x = 1.0; pose.orientation.w = 0.0; 
-        pose.position.x = -0.44; pose.position.y = 0.50; pose.position.z = 0.025; 
+        pose.position.x = -0.1039; pose.position.y = 0.416; pose.position.z = 0.0125; // cylinder center: half of 0.025 m height
         obj.primitives.push_back(primitive);
         obj.primitive_poses.push_back(pose);
         obj.operation = moveit_msgs::msg::CollisionObject::ADD;
         return obj;
     }();
 
-    // 4. Setup the "Table Surface" (Brown)
+    // 4. Setup the Table Surface
     auto const table_surface = [] {
         moveit_msgs::msg::CollisionObject obj;
         obj.header.frame_id = "world";
@@ -154,38 +125,25 @@ int main(int argc, char **argv)
         return obj;
     }();
 
-    // Apply environment objects to the planning scene immediately
     psi.applyCollisionObject(distribution_station);
     psi.applyCollisionObject(sorting_station);
-    psi.applyCollisionObject(target_cube);
+    psi.applyCollisionObject(target_cylinder);
     psi.applyCollisionObject(table_surface);
 
-    // 5. Apply Colors
-    moveit_msgs::msg::PlanningScene planning_scene;
-    planning_scene.is_diff = true;
-    moveit_msgs::msg::ObjectColor cube_color;
-    cube_color.id = "target_cube";
-    cube_color.color.r = 1.0; cube_color.color.a = 1.0;
-    moveit_msgs::msg::ObjectColor table_color;
-    table_color.id = "table_surface";
-    table_color.color.r = 0.58; table_color.color.g = 0.29; table_color.color.b = 0.0; table_color.color.a = 0.8;
-    planning_scene.object_colors.push_back(cube_color);
-    planning_scene.object_colors.push_back(table_color);
-    psi.applyPlanningScene(planning_scene);
-
+    // --- GRIPPER VALUES (Open: 0.0 | Closed on Cylinder: 0.502) ---
     std::vector<double> gripper_open = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-    std::vector<double> gripper_close = {0.42, 0.42, 0.42, 0.42, 0.42, 0.42};
+    std::vector<double> gripper_close = {0.49, 0.49, 0.49, 0.49, 0.49, 0.49};
 
-    // --- PLACE LOCATION (taken from xArm Studio TCP reading: 563.6, 151.7, 129.4 mm) ---
-    const double place_x = 0.5734;
-    const double place_y = -0.3751;
-    const double place_z = 0.1282;
-    const double above_offset = 0.10; // 10 cm above the place pose
+    // --- PLACE LOCATION ---
+    const double place_x = 0.5771;
+    const double place_y = -0.368;
+    const double place_z = 0.120;
+    const double above_offset = 0.100; // 10 cm offset: above place z = 0.220 m
 
-    // 6. STAGE: Approach
+    // 6. STAGE: Approach (10 cm above pick)
     geometry_msgs::msg::Pose approach_pose;
     approach_pose.orientation.x = 1.0; approach_pose.orientation.w = 0.0; 
-    approach_pose.position.x = -0.44; approach_pose.position.y = 0.50; approach_pose.position.z = 0.15;
+    approach_pose.position.x = -0.1039; approach_pose.position.y = 0.416; approach_pose.position.z = 0.140;
     
     RCLCPP_INFO(node->get_logger(), "Executing STAGE: Approach");
     arm_move_group.setPoseTarget(approach_pose);
@@ -196,7 +154,7 @@ int main(int argc, char **argv)
     // STAGE: Cartesian Lowering
     geometry_msgs::msg::Pose pick_pose;
     pick_pose.orientation.x = 1.0; pick_pose.orientation.w = 0.0; 
-    pick_pose.position.x = -0.44; pick_pose.position.y = 0.50; pick_pose.position.z = 0.015;
+    pick_pose.position.x = -0.1039; pick_pose.position.y = 0.416; pick_pose.position.z = 0.004;
     
     std::vector<geometry_msgs::msg::Pose> cartesian_waypoints = {pick_pose};
     moveit_msgs::msg::RobotTrajectory trajectory;
@@ -210,40 +168,18 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    // --- STAGE: Enabling 'Ghost' mode ---
-    moveit_msgs::msg::AttachedCollisionObject allow_touch;
-    allow_touch.link_name = "link_tcp"; 
-    allow_touch.object = target_cube;
-    allow_touch.object.operation = moveit_msgs::msg::CollisionObject::ADD;
-    allow_touch.touch_links = {"left_finger", "right_finger", "left_inner_knuckle", "right_inner_knuckle", "link_tcp"};
-    psi.applyAttachedCollisionObject(allow_touch);
-
-    // STAGE: Grasp
-    RCLCPP_INFO(node->get_logger(), "STAGE: Grasp - Sending close command");
+    // STAGE: Grasp (Closing gripper on cylinder)
+    RCLCPP_INFO(node->get_logger(), "STAGE: Grasp - Closing gripper on cylinder");
     gripper_move_group.setJointValueTarget(gripper_close);
     moveit::planning_interface::MoveGroupInterface::Plan gripper_plan;
     if (gripper_move_group.plan(gripper_plan) == moveit::core::MoveItErrorCode::SUCCESS) {
         gripper_move_group.execute(gripper_plan); 
-        
-        // --- ATTACH LINK IN GAZEBO ---
-        auto request = std::make_shared<linkattacher_msgs::srv::AttachLink::Request>();
-        request->model1_name = "UF_ROBOT";
-        request->link1_name = "link7";
-        request->model2_name = "target_cube";
-        request->link2_name = "link";
-
-        if (!attach_client->wait_for_service(std::chrono::seconds(5))) {
-            RCLCPP_ERROR(node->get_logger(), "Service /ATTACHLINK not available!");
-        } else {
-            auto result = attach_client->async_send_request(request);
-            rclcpp::spin_until_future_complete(node, result);
-        }
     }
 
     // 7. STAGE: Cartesian Lift
     geometry_msgs::msg::Pose above_pick_pose;
     above_pick_pose.orientation.x = 1.0; above_pick_pose.orientation.w = 0.0; 
-    above_pick_pose.position.x = -0.44; above_pick_pose.position.y = 0.50; above_pick_pose.position.z = 0.15;
+    above_pick_pose.position.x = -0.1039; above_pick_pose.position.y = 0.416; above_pick_pose.position.z = 0.140;
     
     std::vector<geometry_msgs::msg::Pose> lift_waypoints = {above_pick_pose};
     RCLCPP_INFO(node->get_logger(), "STAGE: Cartesian Lift");
@@ -254,7 +190,7 @@ int main(int argc, char **argv)
         arm_move_group.execute(lift_plan);
     }
 
-    // 8. STAGE: Move to above place pose (free-space), 10 cm above the place pose
+    // 8. STAGE: Move to above place pose (free-space)
     geometry_msgs::msg::Pose above_place_pose;
     above_place_pose.orientation.x = 1.0; above_place_pose.orientation.w = 0.0; 
     above_place_pose.position.x = place_x;
@@ -286,35 +222,14 @@ int main(int argc, char **argv)
         arm_move_group.execute(drop_plan);
     }
 
-    // STAGE: Opening Gripper and Detaching
-    RCLCPP_INFO(node->get_logger(), "STAGE: Opening Gripper and Detaching Cube");
+    // STAGE: Opening Gripper
+    RCLCPP_INFO(node->get_logger(), "STAGE: Opening Gripper");
     gripper_move_group.setJointValueTarget(gripper_open);
     if (gripper_move_group.plan(gripper_plan) == moveit::core::MoveItErrorCode::SUCCESS) {
         gripper_move_group.execute(gripper_plan); 
-        
-        auto detach_request = std::make_shared<linkattacher_msgs::srv::DetachLink::Request>();
-        detach_request->model1_name = "UF_ROBOT";
-        detach_request->link1_name = "link7";
-        detach_request->model2_name = "target_cube";
-        detach_request->link2_name = "link";
-
-        if (!detach_client->wait_for_service(std::chrono::seconds(10))) {
-            RCLCPP_ERROR(node->get_logger(), "Service /DETACHLINK still not available!");
-        } else {
-            auto result = detach_client->async_send_request(detach_request);
-            if (rclcpp::spin_until_future_complete(node, result) == rclcpp::FutureReturnCode::SUCCESS) {
-                RCLCPP_INFO(node->get_logger(), "Gazebo: Cube successfully detached.");
-                
-                moveit_msgs::msg::AttachedCollisionObject detach_object;
-                detach_object.object.id = "target_cube";
-                detach_object.link_name = "link_tcp";
-                detach_object.object.operation = moveit_msgs::msg::CollisionObject::REMOVE;
-                psi.applyAttachedCollisionObject(detach_object);
-            }
-        }
     }
 
-    // Final Stage: Clearing Move (straight up from the place pose)
+    // Final Stage: Clearing Move
     geometry_msgs::msg::Pose clear_pose;
     clear_pose.orientation.x = 1.0; clear_pose.orientation.w = 0.0; 
     clear_pose.position.x = place_x;
@@ -330,7 +245,7 @@ int main(int argc, char **argv)
         arm_move_group.execute(clear_plan);
     }
 
-    RCLCPP_INFO(node->get_logger(), "Pick and Place Sequence Complete!");
+    RCLCPP_INFO(node->get_logger(), "Real Pick and Place Sequence Complete!");
     rclcpp::shutdown();
     return 0;
 }
