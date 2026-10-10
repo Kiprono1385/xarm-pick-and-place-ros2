@@ -125,13 +125,107 @@ int main(int argc, char **argv)
         return obj;
     }();
 
+    //  Setup the HMI
+    auto const hmi = [] {
+        moveit_msgs::msg::CollisionObject obj;
+        obj.header.frame_id = "world";
+        obj.id = "hmi";
+        shape_msgs::msg::SolidPrimitive primitive;
+        primitive.type = shape_msgs::msg::SolidPrimitive::BOX;
+        primitive.dimensions = {0.1697, 0.3441, 0.3288}; 
+        geometry_msgs::msg::Pose pose;
+        pose.orientation.z = 1.0; pose.orientation.w = 0;
+        pose.position.x = 0.85245; pose.position.y = 0.07175; pose.position.z = 0.1644; 
+        obj.primitives.push_back(primitive);
+        obj.primitive_poses.push_back(pose);
+        obj.operation = moveit_msgs::msg::CollisionObject::ADD;
+        return obj;
+    }();
+
+    //  Setup the obst1
+    auto const obst1 = [] {
+        moveit_msgs::msg::CollisionObject obj;
+        obj.header.frame_id = "world";
+        obj.id = "obst1";
+        shape_msgs::msg::SolidPrimitive primitive;
+        primitive.type = shape_msgs::msg::SolidPrimitive::BOX;
+        primitive.dimensions = {0.1672, 0.1349, 0.2574}; 
+        geometry_msgs::msg::Pose pose;
+        pose.orientation.z = 1.0; pose.orientation.w = 0;
+        pose.position.x = 0.5809; pose.position.y = -0.22525; pose.position.z = 0.1287; 
+        obj.primitives.push_back(primitive);
+        obj.primitive_poses.push_back(pose);
+        obj.operation = moveit_msgs::msg::CollisionObject::ADD;
+        return obj;
+    }();
+
+    //  Setup the obst2
+    auto const obst2 = [] {
+        moveit_msgs::msg::CollisionObject obj;
+        obj.header.frame_id = "world";
+        obj.id = "obst2";
+        shape_msgs::msg::SolidPrimitive primitive;
+        primitive.type = shape_msgs::msg::SolidPrimitive::BOX;
+        primitive.dimensions = {0.0653, 0.0778, 0.1166}; 
+        geometry_msgs::msg::Pose pose;
+        pose.orientation.z = 1.0; pose.orientation.w = 0;
+        pose.position.x = 0.40695; pose.position.y = -0.1075; pose.position.z = 0.0583; 
+        obj.primitives.push_back(primitive);
+        obj.primitive_poses.push_back(pose);
+        obj.operation = moveit_msgs::msg::CollisionObject::ADD;
+        return obj;
+    }();
+
+    //  Setup the obst3
+    auto const obst3 = [] {
+        moveit_msgs::msg::CollisionObject obj;
+        obj.header.frame_id = "world";
+        obj.id = "obst3";
+        shape_msgs::msg::SolidPrimitive primitive;
+        primitive.type = shape_msgs::msg::SolidPrimitive::BOX;
+        primitive.dimensions = {0.2129, 0.1553, 0.1813}; 
+        geometry_msgs::msg::Pose pose;
+        pose.orientation.z = 1.0; pose.orientation.w = 0;
+        pose.position.x = 0.41105; pose.position.y = -0.31475; pose.position.z = 0.09065; 
+        obj.primitives.push_back(primitive);
+        obj.primitive_poses.push_back(pose);
+        obj.operation = moveit_msgs::msg::CollisionObject::ADD;
+        return obj;
+    }();
+
+    //  Setup the obst4
+    auto const obst4 = [] {
+        moveit_msgs::msg::CollisionObject obj;
+        obj.header.frame_id = "world";
+        obj.id = "obst4";
+        shape_msgs::msg::SolidPrimitive primitive;
+        primitive.type = shape_msgs::msg::SolidPrimitive::BOX;
+        primitive.dimensions = {0.01, 2.0, 1.159}; 
+        geometry_msgs::msg::Pose pose;
+        pose.orientation.z = 1.0; pose.orientation.w = 0;
+        pose.position.x = -0.2962; pose.position.y = 0; pose.position.z = 0.5795; 
+        obj.primitives.push_back(primitive);
+        obj.primitive_poses.push_back(pose);
+        obj.operation = moveit_msgs::msg::CollisionObject::ADD;
+        return obj;
+    }();
+
+
+
+
     psi.applyCollisionObject(distribution_station);
     psi.applyCollisionObject(sorting_station);
     psi.applyCollisionObject(target_cylinder);
     psi.applyCollisionObject(table_surface);
+    psi.applyCollisionObject(hmi);
+    psi.applyCollisionObject(obst1);
+    psi.applyCollisionObject(obst2);
+    psi.applyCollisionObject(obst3);
+    psi.applyCollisionObject(obst4);
+
 
     // --- GRIPPER VALUES (Open: 0.0 | Closed on Cylinder: 0.502) ---
-    std::vector<double> gripper_open = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    std::vector<double> gripper_open = {0.42, 0.42, 0.42, 0.42, 0.42, 0.42};
     std::vector<double> gripper_close = {0.49, 0.49, 0.49, 0.49, 0.49, 0.49};
 
     // --- PLACE LOCATION ---
