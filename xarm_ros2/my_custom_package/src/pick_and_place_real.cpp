@@ -71,7 +71,7 @@ int main(int argc, char **argv)
     std::string station1_path = package_share_dir + "/object_scenes/Assembly_Distribution_Station_MCDFinal.stl";
     geometry_msgs::msg::Pose pose1;
     pose1.position.x = 0.35;
-    pose1.position.y = -0.24;
+    pose1.position.y = -0.208;
     pose1.position.z = -0.36;
     pose1.orientation.x = 0.0;
     pose1.orientation.y = 0.0;
@@ -152,7 +152,7 @@ int main(int argc, char **argv)
         primitive.dimensions = {0.1672, 0.1349, 0.2574}; 
         geometry_msgs::msg::Pose pose;
         pose.orientation.z = 1.0; pose.orientation.w = 0;
-        pose.position.x = 0.5809; pose.position.y = -0.22525; pose.position.z = 0.1287; 
+        pose.position.x = 0.5809; pose.position.y = -0.18825; pose.position.z = 0.1287; 
         obj.primitives.push_back(primitive);
         obj.primitive_poses.push_back(pose);
         obj.operation = moveit_msgs::msg::CollisionObject::ADD;
@@ -169,7 +169,7 @@ int main(int argc, char **argv)
         primitive.dimensions = {0.0653, 0.0778, 0.1166}; 
         geometry_msgs::msg::Pose pose;
         pose.orientation.z = 1.0; pose.orientation.w = 0;
-        pose.position.x = 0.40695; pose.position.y = -0.1075; pose.position.z = 0.0583; 
+        pose.position.x = 0.40695; pose.position.y = -0.0755; pose.position.z = 0.0583; 
         obj.primitives.push_back(primitive);
         obj.primitive_poses.push_back(pose);
         obj.operation = moveit_msgs::msg::CollisionObject::ADD;
@@ -186,7 +186,7 @@ int main(int argc, char **argv)
         primitive.dimensions = {0.2129, 0.1553, 0.1813}; 
         geometry_msgs::msg::Pose pose;
         pose.orientation.z = 1.0; pose.orientation.w = 0;
-        pose.position.x = 0.41105; pose.position.y = -0.31475; pose.position.z = 0.09065; 
+        pose.position.x = 0.41105; pose.position.y = -0.28275; pose.position.z = 0.09065; 
         obj.primitives.push_back(primitive);
         obj.primitive_poses.push_back(pose);
         obj.operation = moveit_msgs::msg::CollisionObject::ADD;
@@ -210,7 +210,22 @@ int main(int argc, char **argv)
         return obj;
     }();
 
-
+    //  Setup the obst5
+    auto const obst5 = [] {
+        moveit_msgs::msg::CollisionObject obj;
+        obj.header.frame_id = "world";
+        obj.id = "obst5";
+        shape_msgs::msg::SolidPrimitive primitive;
+        primitive.type = shape_msgs::msg::SolidPrimitive::BOX;
+        primitive.dimensions = {2.0, 2.0, 0.01}; 
+        geometry_msgs::msg::Pose pose;
+        pose.orientation.z = 1.0; pose.orientation.w = 0;
+        pose.position.x = 0; pose.position.y = 0; pose.position.z = 0.7408; 
+        obj.primitives.push_back(primitive);
+        obj.primitive_poses.push_back(pose);
+        obj.operation = moveit_msgs::msg::CollisionObject::ADD;
+        return obj;
+    }();
 
 
     psi.applyCollisionObject(distribution_station);
@@ -222,17 +237,26 @@ int main(int argc, char **argv)
     psi.applyCollisionObject(obst2);
     psi.applyCollisionObject(obst3);
     psi.applyCollisionObject(obst4);
+    psi.applyCollisionObject(obst5);
 
 
-    // --- GRIPPER VALUES (Open: 0.0 | Closed on Cylinder: 0.502) ---
+    // --- GRIPPER VALUES (Open: 0.42 | Closed on Cylinder: 0.49) ---
     std::vector<double> gripper_open = {0.42, 0.42, 0.42, 0.42, 0.42, 0.42};
     std::vector<double> gripper_close = {0.49, 0.49, 0.49, 0.49, 0.49, 0.49};
 
     // --- PLACE LOCATION ---
-    const double place_x = 0.5771;
-    const double place_y = -0.368;
-    const double place_z = 0.120;
+    const double place_x = 0.5817;
+    const double place_y = -0.331;
+    const double place_z = 0.130;
     const double above_offset = 0.100; // 10 cm offset: above place z = 0.220 m
+
+    // STAGE: Initial Opening Gripper
+    RCLCPP_INFO(node->get_logger(), "STAGE: Initial Opening Gripper");
+    gripper_move_group.setJointValueTarget(gripper_open);
+    moveit::planning_interface::MoveGroupInterface::Plan initial_gripper_plan;
+    if (gripper_move_group.plan(initial_gripper_plan) == moveit::core::MoveItErrorCode::SUCCESS) {
+        gripper_move_group.execute(initial_gripper_plan);
+    }
 
     // 6. STAGE: Approach (10 cm above pick)
     geometry_msgs::msg::Pose approach_pose;
