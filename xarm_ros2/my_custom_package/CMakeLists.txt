@@ -15,6 +15,11 @@ find_package(shape_msgs REQUIRED)
 find_package(linkattacher_msgs REQUIRED)
 find_package(xarm_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
+find_package(trajectory_msgs REQUIRED)
+find_package(PkgConfig REQUIRED)
+
+# Check for open62541 library via pkg-config
+pkg_check_modules(OPEN62541 REQUIRED open62541)
 
 # --- ADD C++ EXECUTABLES ---
 add_executable(pick_and_place_gazebo src/pick_and_place_gazebo.cpp)
@@ -30,6 +35,9 @@ ament_target_dependencies(pick_and_place_gazebo
 )
 
 add_executable(pick_and_place_real src/pick_and_place_real.cpp)
+target_include_directories(pick_and_place_real PUBLIC
+  ${OPEN62541_INCLUDE_DIRS}
+)
 ament_target_dependencies(pick_and_place_real
   rclcpp
   moveit_ros_planning_interface
@@ -39,11 +47,16 @@ ament_target_dependencies(pick_and_place_real
   xarm_msgs
   yaml-cpp
 )
+target_link_libraries(pick_and_place_real ${OPEN62541_LIBRARIES})
+
+add_executable(ghost_relay_internal src/ghost_relay_internal.cpp)
+ament_target_dependencies(ghost_relay_internal rclcpp moveit_msgs trajectory_msgs)
 
 # --- INSTALL TARGETS ---
 install(TARGETS
   pick_and_place_gazebo
   pick_and_place_real
+  ghost_relay_internal
   DESTINATION lib/${PROJECT_NAME}
 )
 

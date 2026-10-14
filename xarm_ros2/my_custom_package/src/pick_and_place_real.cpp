@@ -16,9 +16,43 @@
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <Eigen/Core>
 
+// --- OPEN62541 OPC UA HEADERS ---
+#include <open62541/client_config_default.h>
+#include <open62541/client_highlevel.h>
+
 #include <thread>
 #include <vector>
 #include <chrono>
+
+// Helper function to write a boolean tag to the PLC via OPC UA
+static bool writeBool(UA_Client* client, rclcpp::Logger log, const char* node_str, bool value) {
+    UA_Variant v;
+    UA_Variant_init(&v);
+    UA_Variant_setScalar(&v, &value, &UA_TYPES[UA_TYPES_BOOLEAN]);
+    UA_StatusCode rc = UA_Client_writeValueAttribute(
+        client, UA_NODEID_STRING(3, const_cast<char*>(node_str)), &v);
+    if (rc != UA_STATUSCODE_GOOD) {
+        RCLCPP_ERROR(log, "OPC UA Write %s = %d failed: %s", node_str, value, UA_StatusCode_name(rc));
+        return false;
+    }
+    return true;
+}
+
+// Helper function to read a boolean tag from the PLC via OPC UA
+static bool readBool(UA_Client* client, rclcpp::Logger log, const char* node_str, bool& out) {
+    UA_Variant v;
+    UA_Variant_init(&v);
+    UA_StatusCode rc = UA_Client_readValueAttribute(
+        client, UA_NODEID_STRING(3, const_cast<char*>(node_str)), &v);
+    bool ok = (rc == UA_STATUSCODE_GOOD) && UA_Variant_hasScalarType(&v, &UA_TYPES[UA_TYPES_BOOLEAN]);
+    if (ok) {
+        out = *static_cast<bool*>(v.data);
+    } else {
+        RCLCPP_ERROR(log, "OPC UA Read %s failed: %s", node_str, UA_StatusCode_name(rc));
+    }
+    UA_Variant_clear(&v);
+    return ok;
+}
 
 // Helper function to load an STL file, scale it, and fix it to the world frame
 moveit_msgs::msg::CollisionObject createMeshCollisionObject(
@@ -101,7 +135,7 @@ int main(int argc, char **argv)
         primitive.dimensions = {0.025, 0.020}; // {height: 2.5cm, radius: 2.0cm -> 4cm diameter}
         geometry_msgs::msg::Pose pose;
         pose.orientation.x = 1.0; pose.orientation.w = 0.0; 
-        pose.position.x = -0.1039; pose.position.y = 0.416; pose.position.z = 0.0125; // cylinder center: half of 0.025 m height
+        pose.position.x = -0.1039; pose.position.y = 0.416; pose.position.z = 0.0125; 
         obj.primitives.push_back(primitive);
         obj.primitive_poses.push_back(pose);
         obj.operation = moveit_msgs::msg::CollisionObject::ADD;
@@ -125,7 +159,7 @@ int main(int argc, char **argv)
         return obj;
     }();
 
-    //  Setup the HMI
+    // Setup the HMI
     auto const hmi = [] {
         moveit_msgs::msg::CollisionObject obj;
         obj.header.frame_id = "world";
@@ -142,7 +176,7 @@ int main(int argc, char **argv)
         return obj;
     }();
 
-    //  Setup the obst1
+    // Setup the obst1
     auto const obst1 = [] {
         moveit_msgs::msg::CollisionObject obj;
         obj.header.frame_id = "world";
@@ -159,7 +193,7 @@ int main(int argc, char **argv)
         return obj;
     }();
 
-    //  Setup the obst2
+    // Setup the obst2
     auto const obst2 = [] {
         moveit_msgs::msg::CollisionObject obj;
         obj.header.frame_id = "world";
@@ -176,7 +210,7 @@ int main(int argc, char **argv)
         return obj;
     }();
 
-    //  Setup the obst3
+    // Setup the obst3
     auto const obst3 = [] {
         moveit_msgs::msg::CollisionObject obj;
         obj.header.frame_id = "world";
@@ -193,7 +227,7 @@ int main(int argc, char **argv)
         return obj;
     }();
 
-    //  Setup the obst4
+    // Setup the obst4
     auto const obst4 = [] {
         moveit_msgs::msg::CollisionObject obj;
         obj.header.frame_id = "world";
@@ -210,7 +244,7 @@ int main(int argc, char **argv)
         return obj;
     }();
 
-    //  Setup the obst5
+    // Setup the obst5
     auto const obst5 = [] {
         moveit_msgs::msg::CollisionObject obj;
         obj.header.frame_id = "world";
@@ -227,7 +261,6 @@ int main(int argc, char **argv)
         return obj;
     }();
 
-
     psi.applyCollisionObject(distribution_station);
     psi.applyCollisionObject(sorting_station);
     psi.applyCollisionObject(target_cylinder);
@@ -239,7 +272,6 @@ int main(int argc, char **argv)
     psi.applyCollisionObject(obst4);
     psi.applyCollisionObject(obst5);
 
-
     // --- GRIPPER VALUES (Open: 0.42 | Closed on Cylinder: 0.49) ---
     std::vector<double> gripper_open = {0.42, 0.42, 0.42, 0.42, 0.42, 0.42};
     std::vector<double> gripper_close = {0.49, 0.49, 0.49, 0.49, 0.49, 0.49};
@@ -248,7 +280,7 @@ int main(int argc, char **argv)
     const double place_x = 0.5817;
     const double place_y = -0.331;
     const double place_z = 0.130;
-    const double above_offset = 0.100; // 10 cm offset: above place z = 0.220 m
+    const double above_offset = 0.100; // 10 cm offset
 
     // STAGE: Initial Opening Gripper
     RCLCPP_INFO(node->get_logger(), "STAGE: Initial Opening Gripper");
@@ -258,7 +290,7 @@ int main(int argc, char **argv)
         gripper_move_group.execute(initial_gripper_plan);
     }
 
-    // 6. STAGE: Approach (10 cm above pick)
+    // STAGE: Approach (10 cm above pick)
     geometry_msgs::msg::Pose approach_pose;
     approach_pose.orientation.x = 1.0; approach_pose.orientation.w = 0.0; 
     approach_pose.position.x = -0.1039; approach_pose.position.y = 0.416; approach_pose.position.z = 0.140;
@@ -294,7 +326,7 @@ int main(int argc, char **argv)
         gripper_move_group.execute(gripper_plan); 
     }
 
-    // 7. STAGE: Cartesian Lift
+    // STAGE: Cartesian Lift
     geometry_msgs::msg::Pose above_pick_pose;
     above_pick_pose.orientation.x = 1.0; above_pick_pose.orientation.w = 0.0; 
     above_pick_pose.position.x = -0.1039; above_pick_pose.position.y = 0.416; above_pick_pose.position.z = 0.140;
@@ -308,7 +340,7 @@ int main(int argc, char **argv)
         arm_move_group.execute(lift_plan);
     }
 
-    // 8. STAGE: Move to above place pose (free-space)
+    // STAGE: Move to above place pose (free-space)
     geometry_msgs::msg::Pose above_place_pose;
     above_place_pose.orientation.x = 1.0; above_place_pose.orientation.w = 0.0; 
     above_place_pose.position.x = place_x;
@@ -324,7 +356,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    // 9. STAGE: Cartesian Place
+    // STAGE: Cartesian Place
     geometry_msgs::msg::Pose place_pose;
     place_pose.orientation.x = 1.0; place_pose.orientation.w = 0.0; 
     place_pose.position.x = place_x;
@@ -347,7 +379,7 @@ int main(int argc, char **argv)
         gripper_move_group.execute(gripper_plan); 
     }
 
-    // Final Stage: Clearing Move
+    // STAGE: Final Clearing Move
     geometry_msgs::msg::Pose clear_pose;
     clear_pose.orientation.x = 1.0; clear_pose.orientation.w = 0.0; 
     clear_pose.position.x = place_x;
@@ -364,6 +396,44 @@ int main(int argc, char **argv)
     }
 
     RCLCPP_INFO(node->get_logger(), "Real Pick and Place Sequence Complete!");
+
+    // --- OPC UA HANDSHAKE WITH PLC ---
+    RCLCPP_INFO(node->get_logger(), "Connecting to OPC UA server...");
+    UA_Client* client = UA_Client_new();
+    UA_ClientConfig* cfg = UA_Client_getConfig(client);
+    UA_ClientConfig_setDefault(cfg);
+    cfg->timeout = 3000; // 3 seconds timeout
+
+    UA_StatusCode ua_rc = UA_Client_connect(client, "opc.tcp://172.16.40.21:4840");
+    if (ua_rc != UA_STATUSCODE_GOOD) {
+        RCLCPP_ERROR(node->get_logger(), "OPC UA Connect failed: %s", UA_StatusCode_name(ua_rc));
+        UA_Client_delete(client);
+        rclcpp::shutdown();
+        return 1;
+    }
+
+    const char* node_str = "\"DISTRIBUTION DB\".\"robot_done\"";
+    
+    // Set robot_done = true
+    if (writeBool(client, node->get_logger(), node_str, true)) {
+        RCLCPP_INFO(node->get_logger(), "Successfully wrote robot_done = true to PLC.");
+        
+        // Optional read-back check
+        bool rb = false;
+        if (readBool(client, node->get_logger(), node_str, rb)) {
+            RCLCPP_INFO(node->get_logger(), "robot_done read-back: %d", rb);
+        }
+    }
+
+    // Short sleep before resetting handshake bit
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    writeBool(client, node->get_logger(), node_str, false);
+
+    // Disconnect and cleanup OPC UA client
+    UA_Client_disconnect(client);
+    UA_Client_delete(client);
+    RCLCPP_INFO(node->get_logger(), "OPC UA session closed.");
+
     rclcpp::shutdown();
     return 0;
 }
