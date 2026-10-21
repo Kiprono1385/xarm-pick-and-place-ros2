@@ -30,9 +30,7 @@ public:
     PickAndPlaceRobot(rclcpp::Node::SharedPtr node)
         : node_(node),
           arm_move_group_(node_, "xarm7"),
-          gripper_move_group_(node_, "xarm_gripper"),
-          opc_client_(nullptr),
-          opc_connected_(false)
+          gripper_move_group_(node_, "xarm_gripper")
     {
         // Define gripper joint targets
         gripper_open_ = {0.42, 0.42, 0.42, 0.42, 0.42, 0.42};
@@ -46,34 +44,9 @@ public:
         place_pose_.position.z = 0.130;
         above_offset_ = 0.100;
 
-        // Configure robust planning parameters and set planner to InformedRRTstar
-        arm_move_group_.setPlannerId("InformedRRTstar"); // Fast, optimized path sampling
-        arm_move_group_.setPlanningTime(5.0);            // Allow up to 5 seconds per plan
-        arm_move_group_.setNumPlanningAttempts(10);      // Try 10 internal randomized seeds per plan call
-
-        // Initialize and establish a persistent OPC UA connection ONCE at startup
-        opc_client_ = UA_Client_new();
-        UA_ClientConfig* cfg = UA_Client_getConfig(opc_client_);
-        UA_ClientConfig_setDefault(cfg);
-        cfg->timeout = 3000;
-
-        UA_StatusCode ua_rc = UA_Client_connect(opc_client_, "opc.tcp://172.16.40.21:4840");
-        if (ua_rc == UA_STATUSCODE_GOOD) {
-            opc_connected_ = true;
-            RCLCPP_INFO(node_->get_logger(), "Persistent OPC UA connection established successfully.");
-        } else {
-            RCLCPP_ERROR(node_->get_logger(), "Failed to establish persistent OPC UA connection: %s", UA_StatusCode_name(ua_rc));
-        }
-    }
-
-    ~PickAndPlaceRobot() {
-        if (opc_connected_ && opc_client_) {
-            UA_Client_disconnect(opc_client_);
-            RCLCPP_INFO(node_->get_logger(), "Disconnected persistent OPC UA client.");
-        }
-        if (opc_client_) {
-            UA_Client_delete(opc_client_);
-        }
+        // Configure robust planning parameters
+        arm_move_group_.setPlanningTime(5.0);       // Allow up to 5 seconds per plan
+        arm_move_group_.setNumPlanningAttempts(10); // Try 10 internal randomized seeds per plan call
     }
 
     // Helper function to load an STL file, scale it, and fix it to the world frame
@@ -295,7 +268,7 @@ public:
         // 8. Open Gripper to release
         if (!openGripper()) return false;
 
-        // 9. Final Clearing Move (Above Place)
+        // 9. Final Clearing Move
         std::vector<geometry_msgs::msg::Pose> clear_waypoints = {above_place_pose};
         RCLCPP_INFO(node_->get_logger(), "STAGE: Final Clearing Move");
         fraction = arm_move_group_.computeCartesianPath(clear_waypoints, 0.01, 0.0, trajectory);
@@ -309,23 +282,30 @@ public:
     }
 
     bool sendOpcUaHandshake() {
-        if (!opc_connected_ || !opc_client_) {
-            RCLCPP_ERROR(node_->get_logger(), "Cannot send OPC UA handshake: No active connection.");
+        RCLCPP_INFO(node_->get_logger(), "Connecting to OPC UA server...");
+        UA_Client* client = UA_Client_new();
+        UA_ClientConfig* cfg = UA_Client_getConfig(client);
+        UA_ClientConfig_setDefault(cfg);
+        cfg->timeout = 3000;
+
+        UA_StatusCode ua_rc = UA_Client_connect(client, "opc.tcp://172.16.40.21:4840");
+        if (ua_rc != UA_STATUSCODE_GOOD) {
+            RCLCPP_ERROR(node_->get_logger(), "OPC UA Connect failed: %s", UA_StatusCode_name(ua_rc));
+            UA_Client_delete(client);
             return false;
         }
 
-        const char* node_str = "\"ROBOT_COMMUNICATION\".\"robot_done\"";
+        UA_NodeId node_id = UA_NODEID_STRING(3, (char*)"\"ROBOT_COMMUNICATION\".\"robot_done\"");
+
         UA_Variant v;
         UA_Variant_init(&v);
-        
+
         // Write True
         bool val_true = true;
         UA_Variant_setScalar(&v, &val_true, &UA_TYPES[UA_TYPES_BOOLEAN]);
-        UA_StatusCode retval = UA_Client_writeValueAttribute(opc_client_, UA_NODEID_STRING(3, const_cast<char*>(node_str)), &v);
-        
-        if (retval != UA_STATUSCODE_GOOD) {
-            RCLCPP_ERROR(node_->get_logger(), "Failed to write True to PLC: %s", UA_StatusCode_name(retval));
-            return false;
+        UA_StatusCode write_rc1 = UA_Client_writeValueAttribute(client, node_id, &v);
+        if (write_rc1 != UA_STATUSCODE_GOOD) {
+            RCLCPP_ERROR(node_->get_logger(), "Failed to write True to PLC: %s", UA_StatusCode_name(write_rc1));
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -333,10 +313,15 @@ public:
         // Write False
         bool val_false = false;
         UA_Variant_setScalar(&v, &val_false, &UA_TYPES[UA_TYPES_BOOLEAN]);
-        UA_Client_writeValueAttribute(opc_client_, UA_NODEID_STRING(3, const_cast<char*>(node_str)), &v);
+        UA_StatusCode write_rc2 = UA_Client_writeValueAttribute(client, node_id, &v);
+        if (write_rc2 != UA_STATUSCODE_GOOD) {
+            RCLCPP_ERROR(node_->get_logger(), "Failed to write False to PLC: %s", UA_StatusCode_name(write_rc2));
+        }
 
-        RCLCPP_INFO(node_->get_logger(), "OPC UA handshake pulse sent successfully over persistent link.");
-        return true;
+        UA_Client_disconnect(client);
+        UA_Client_delete(client);
+        RCLCPP_INFO(node_->get_logger(), "OPC UA handshake sequence completed successfully.");
+        return (write_rc1 == UA_STATUSCODE_GOOD && write_rc2 == UA_STATUSCODE_GOOD);
     }
 
 private:
@@ -349,10 +334,6 @@ private:
     std::vector<double> gripper_close_;
     geometry_msgs::msg::Pose place_pose_;
     double above_offset_;
-
-    // Persistent OPC UA Client Members
-    UA_Client* opc_client_;
-    bool opc_connected_;
 };
 
 int main(int argc, char **argv)
@@ -368,47 +349,35 @@ int main(int argc, char **argv)
     // Initial Gripper Opening
     robot.openGripper();
 
-    // Define 6 Pick Positions (Repeating the same 3 coordinates twice)
-    std::vector<geometry_msgs::msg::Pose> pick_positions(6);
+    // Define 3 Different Pick Positions
+    std::vector<geometry_msgs::msg::Pose> pick_positions(3);
 
-    // Pick Position 1 (Original 1)
+    // Pick Position 1
     pick_positions[0].orientation.x = 1.0; pick_positions[0].orientation.w = 0.0;
     pick_positions[0].position.x = -0.1039; pick_positions[0].position.y = 0.416; pick_positions[0].position.z = 0.004;
 
-    // Pick Position 2 (Original 2)
+    // Pick Position 2
     pick_positions[1].orientation.x = 1.0; pick_positions[1].orientation.w = 0.0;
     pick_positions[1].position.x = 0.0579; pick_positions[1].position.y = 0.4212; pick_positions[1].position.z = 0.004;
 
-    // Pick Position 3 (Original 3)
+    // Pick Position 3
     pick_positions[2].orientation.x = 1.0; pick_positions[2].orientation.w = 0.0;
     pick_positions[2].position.x = 0.0566; pick_positions[2].position.y = 0.599; pick_positions[2].position.z = 0.004;
 
-    // Pick Position 4 (Repeat of Original 1)
-    pick_positions[3].orientation.x = 1.0; pick_positions[3].orientation.w = 0.0;
-    pick_positions[3].position.x = -0.1039; pick_positions[3].position.y = 0.416; pick_positions[3].position.z = 0.004;
-
-    // Pick Position 5 (Repeat of Original 2)
-    pick_positions[4].orientation.x = 1.0; pick_positions[4].orientation.w = 0.0;
-    pick_positions[4].position.x = 0.0579; pick_positions[4].position.y = 0.4212; pick_positions[4].position.z = 0.004;
-
-    // Pick Position 6 (Repeat of Original 3)
-    pick_positions[5].orientation.x = 1.0; pick_positions[5].orientation.w = 0.0;
-    pick_positions[5].position.x = 0.0566; pick_positions[5].position.y = 0.599; pick_positions[5].position.z = 0.004;
-
-    // Loop through all 6 picking stations sequentially
+    // Loop through all three picking stations sequentially
     for (size_t i = 0; i < pick_positions.size(); ++i) {
-        RCLCPP_INFO(node->get_logger(), "=== STARTING PICK & PLACE CYCLE %zu OF 6 ===", i + 1);
+        RCLCPP_INFO(node->get_logger(), "=== STARTING PICK & PLACE CYCLE %zu OF 3 ===", i + 1);
         if (!robot.executePickAndPlace(pick_positions[i])) {
             RCLCPP_ERROR(node->get_logger(), "Pick and place cycle %zu failed. Aborting.", i + 1);
             rclcpp::shutdown();
             return 1;
         }
 
-        // Trigger OPC UA handshake immediately after placing and clearing above place
+        // Trigger OPC UA handshake immediately after each successful place
         robot.sendOpcUaHandshake();
     }
 
-    RCLCPP_INFO(node->get_logger(), "All 6 pick and place cycles completed successfully!");
+    RCLCPP_INFO(node->get_logger(), "All 3 pick and place cycles completed successfully!");
     rclcpp::shutdown();
     return 0;
 }
